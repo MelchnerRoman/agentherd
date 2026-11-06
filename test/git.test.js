@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { prepareRepo, mainWorktreePath, taskWorktree, commitAll, diffVsIntegration, mergeTask, removeTaskWorktree } from '../src/git.js';
+import { prepareRepo, mainWorktreePath, taskWorktree, commitAll, diffVsIntegration, mergeTask, removeTaskWorktree, commitsAhead } from '../src/git.js';
 
 const ID = ['-c', 'user.name=t', '-c', 'user.email=t@t'];
 const git = (cwd, ...args) => execFileSync('git', [...ID, ...args], { cwd, encoding: 'utf8' }).trim();
@@ -139,4 +139,14 @@ test('removeTaskWorktree keepBranchAs renames the branch', () => {
   assert.equal(git(f, 'branch', '--list', 'task-1'), '');
   assert.notEqual(git(f, 'branch', '--list', 'task-1-conflict-1'), '');
   removeTaskWorktree(f, 2, { keepBranchAs: 'task-2' }); // never started: no dir, no branch
+});
+
+test('commitsAhead counts task commits over agentherd', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const wt = taskWorktree(f, 1);
+  assert.equal(commitsAhead(wt), 0);
+  fs.writeFileSync(path.join(wt, 'x.txt'), 'x');
+  commitAll(wt, 'x');
+  assert.equal(commitsAhead(wt), 1);
 });

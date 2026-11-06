@@ -128,6 +128,14 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       addNew(res.output.newTasks, role);
       if (res.output.status !== 'done') return failTask(role, task, res.output.summary, 'backlog');
       git.commitAll(cwd, `T${task.id}: ${task.title}`);
+      if (git.commitsAhead(cwd) === 0) {
+        task.status = 'done';
+        task.notes.push('no changes needed');
+        state.leadIdle = false;
+        emit(name(role), `finished T${task.id}: no changes needed`);
+        try { git.removeTaskWorktree(state.folder, task.id); } catch {}
+        return;
+      }
       task.status = 'review';
       emit(name(role), `finished T${task.id}, ready for review`);
     }, (msg) => failTask(role, task, msg, 'backlog'));

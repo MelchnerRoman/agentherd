@@ -53,6 +53,7 @@ export function commitAll(dir, message) {
   return run(dir, 'rev-parse', '--short', 'HEAD');
 }
 
+export const commitsAhead = (dir) => Number(run(dir, 'rev-list', '--count', 'agentherd..HEAD'));
 export const diffVsIntegration = (dir) => run(dir, 'diff', 'agentherd...HEAD');
 
 export function mergeTask(folder, taskId, title) {

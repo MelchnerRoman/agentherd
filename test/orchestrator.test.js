@@ -26,7 +26,12 @@ function setup({ tasks = [], maxAgents = 6, status = 'running', git } = {}) {
     let resolve;
     const promise = new Promise((r) => { resolve = r; });
     const c = { role: role.id, prompt, cwd, killed: false };
-    c.resolve = async (res) => { resolve(res); await flush(); };
+    // a worker "doing the work" leaves a change behind unless told not to
+    c.resolve = async (res, { change = true } = {}) => {
+      if (change && role.kind === 'worker' && fs.existsSync(cwd)) fs.writeFileSync(path.join(cwd, `work-${calls.indexOf(c)}.txt`), 'w\n');
+      resolve(res);
+      await flush();
+    };
     calls.push(c);
     return { promise, kill() { c.killed = true; resolve({ ok: false, error: 'killed' }); } };
   };
@@ -392,4 +397,21 @@ test('blocked task clears leadIdle', async () => {
   assert.equal(state.tasks[0].status, 'blocked');
   assert.equal(state.leadIdle, false);
   assert.equal(count('lead'), 1);
+});
+
+test('worker done without changes → done, no review, worktree removed', async () => {
+  const { state, o, last, count, folder } = setup({ tasks: [{ role: 'backend' }] });
+  o.tick();
+  const w = last('backend');
+  state.leadIdle = true;
+  state.status = 'paused';
+  await w.resolve(done(), { change: false });
+  const t = state.tasks[0];
+  assert.equal(t.status, 'done');
+  assert.equal(t.commit, null);
+  assert.deepEqual(t.notes, ['no changes needed']);
+  assert.equal(count('reviewer'), 0);
+  assert.equal(fs.existsSync(w.cwd), false);
+  assert.equal(execFileSync('git', ['branch', '--list', 'task-1'], { cwd: folder, encoding: 'utf8' }), '');
+  assert.equal(state.leadIdle, false);
 });
