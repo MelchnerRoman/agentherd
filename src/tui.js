@@ -8,14 +8,14 @@ import { api, subscribe } from './client.js';
 const clip = (s, w) => (s.length > w ? s.slice(0, Math.max(0, w)) : s);
 const hhmm = (t) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-export function renderView(state, { width, height }) {
+export function renderView(state, { width, height, disconnected = false }) {
   const c = state.counts ?? counts(state);
   const working = Object.values(state.agents).filter((a) => a.status === 'working').length;
   const status = state.status === 'limited'
     ? `paused – usage limit, resumes ${state.resumeAt ? hhmm(state.resumeAt) : '?'}`
     : state.status;
   const lines = [
-    `agentHerd · ${path.basename(state.folder)} · ${status} · agents ${working}/${state.maxAgents}`,
+    `agentHerd · ${path.basename(state.folder)} · ${disconnected ? 'lost connection to the team, reconnecting…' : status} · agents ${working}/${state.maxAgents}`,
     `Backlog ${c.backlog} · In progress ${c.in_progress} · Review ${c.review} · Done ${c.done} · Blocked ${c.blocked}`,
   ];
   const nameW = Math.max(...Object.values(ROLES).map((r) => r.name.length));
@@ -57,20 +57,20 @@ export function openUrl(url) {
 
 export function startTui(port, folder) {
   const out = process.stdout;
-  let state = null, page = null, flash = '', timer = null, last = 0;
+  let state = null, disconnected = false, page = null, flash = '', timer = null, last = 0;
   const rl = readline.createInterface({ input: process.stdin, output: out, prompt: '> ' });
 
   const draw = () => {
     timer = null; last = Date.now();
     if (page !== null) return;
-    const body = state ? renderView(state, { width: out.columns || 80, height: out.rows || 24 }) : 'Connecting…';
+    const body = state ? renderView(state, { width: out.columns || 80, height: out.rows || 24, disconnected }) : 'Connecting…';
     out.write('\x1b[H\x1b[2J' + body + '\n' + (flash ? clip(flash, out.columns || 80) + '\n' : ''));
     rl.prompt(true);
   };
   const schedule = () => { if (!timer) timer = setTimeout(draw, Math.max(0, 250 - (Date.now() - last))); };
   const say = (m) => { flash = m; schedule(); };
 
-  const unsub = subscribe(port, (s) => { state = s; schedule(); });
+  const unsub = subscribe(port, (s) => { state = s; schedule(); }, (st) => { disconnected = st === 'disconnected'; schedule(); });
   let done = false;
   const detach = (msg, code = 0) => {
     if (done) return;

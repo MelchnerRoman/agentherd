@@ -83,3 +83,24 @@ test('rejects foreign Host headers and non-JSON posts', async () => {
   assert.equal(await raw(port, { method: 'POST', path: '/api/message', headers: { 'Content-Type': 'text/plain' }, body: '{"text":"hi"}' }), 415);
   assert.equal(await raw(port, { method: 'POST', path: '/api/message', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: '{"text":"hi"}' }), 200);
 });
+
+test('daemon output goes to daemon.log and a failed start reports it', async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-d-'));
+  fs.mkdirSync(path.join(folder, '.agentherd'));
+  fs.writeFileSync(path.join(folder, '.agentherd', 'state.json'), '{not json');
+  await assert.rejects(ensureDaemon(folder), /daemon did not start[\s\S]*JSON/);
+  assert.match(fs.readFileSync(path.join(folder, '.agentherd', 'daemon.log'), 'utf8'), /JSON/);
+});
+
+test('subscribe reports connection status', async () => {
+  const f = mk();
+  const { port } = await ensureDaemon(f);
+  const seen = [];
+  await new Promise((resolve) => { const un = subscribe(port, () => { un(); resolve(); }, (s) => seen.push(s)); });
+  assert.deepEqual(seen, ['connected']);
+  const down = [];
+  const un = subscribe(1, () => {}, (s) => { down.push(s); });
+  await new Promise((r) => setTimeout(r, 100));
+  un();
+  assert.deepEqual(down, ['disconnected']);
+});

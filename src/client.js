@@ -17,15 +17,24 @@ export function readDaemon(folder) {
 }
 
 export async function ensureDaemon(folder) {
+  const logFile = path.join(folder, '.agentherd', 'daemon.log');
+  let exited = false;
   if (!readDaemon(folder)) {
-    spawn(process.execPath, [daemonPath, folder], { detached: true, stdio: 'ignore', env: process.env }).unref();
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    const fd = fs.openSync(logFile, 'a');
+    const child = spawn(process.execPath, [daemonPath, folder], { detached: true, stdio: ['ignore', fd, fd], env: process.env });
+    fs.closeSync(fd);
+    child.on('exit', () => { exited = true; });
+    child.unref();
   }
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 50 && !exited; i++) {
     const d = readDaemon(folder);
     if (d) return { port: d.port };
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error('daemon did not start');
+  let tail = '';
+  try { tail = fs.readFileSync(logFile, 'utf8').trimEnd().split('\n').slice(-10).join('\n'); } catch {}
+  throw new Error(`daemon did not start${tail ? ` (${logFile}):\n${tail}` : ''}`);
 }
 
 export function api(port, method, urlPath, body) {
@@ -45,10 +54,12 @@ export function api(port, method, urlPath, body) {
   });
 }
 
-export function subscribe(port, onState) {
-  let closed = false, req;
+export function subscribe(port, onState, onStatus = () => {}) {
+  let closed = false, req, timer, status;
+  const report = (s) => { if (!closed && s !== status) { status = s; onStatus(s); } };
   const connect = () => {
     req = http.get({ host: '127.0.0.1', port, path: '/api/events' }, (res) => {
+      report('connected');
       let buf = '';
       res.setEncoding('utf8');
       res.on('data', (c) => {
@@ -63,7 +74,10 @@ export function subscribe(port, onState) {
     });
     req.on('error', retry);
   };
-  const retry = () => { if (!closed) setTimeout(connect, 1000); };
+  const retry = () => {
+    report('disconnected');
+    if (!closed) { clearTimeout(timer); timer = setTimeout(connect, 1000); }
+  };
   connect();
-  return () => { closed = true; req.destroy(); };
+  return () => { closed = true; clearTimeout(timer); req.destroy(); };
 }

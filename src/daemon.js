@@ -116,6 +116,13 @@ server.on('listening', () => {
   orch.tick();
   setInterval(() => orch.tick(), 5000);
 });
+// stderr goes to .agentherd/daemon.log; the activity feed is what the owner actually sees
+const report = (kind) => (e) => {
+  console.error(`${new Date().toISOString()} ${kind}:`, e);
+  try { log(state, 'agentHerd', `internal error: ${e?.message ?? e}`); saveState(state); } catch {}
+};
+process.on('unhandledRejection', report('unhandledRejection'));
+process.on('uncaughtException', (e) => { report('uncaughtException')(e); shutdown(); });
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 server.listen(port, '127.0.0.1');

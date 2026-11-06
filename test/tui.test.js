@@ -37,3 +37,7 @@ test('clips to width and height', () => {
   assert.ok(lines.every((l) => l.length <= 40));
   assert.ok(lines.length <= 23);
 });
+
+test('header shows lost connection', () => {
+  assert.match(renderView(mk(), { width: 80, height: 30, disconnected: true }).split('\n')[0], /lost connection to the team, reconnecting…/);
+});
