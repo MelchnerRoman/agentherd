@@ -18,9 +18,12 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
   const emit = (agent, text) => { log(state, agent, text); saveState(state); onChange(); };
   const name = (role) => ROLES[role].name;
   const free = (role) => running.size < state.maxAgents && !running.has(role);
+  const key = (title) => String(title).trim().toLowerCase();
   const addNew = (tasks = [], createdBy) => {
-    for (const { title, description, role } of tasks) addTask(state, { title, description, role, createdBy });
-    return tasks.length;
+    for (const { title, description, role } of tasks) {
+      if (state.tasks.some((t) => t.status !== 'done' && key(t.title) === key(title))) continue;
+      addTask(state, { title, description, role, createdBy });
+    }
   };
 
   const idle = (role) => { state.agents[role] = { status: 'idle', taskId: null }; };
@@ -146,23 +149,27 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
     const researchOpen = state.tasks.some((t) => t.role === 'researcher' && OPEN.includes(t.status));
     if (!free('lead') || state.leadIdle || backlog.length >= 3 || researchOpen) return;
     const unread = state.messages.filter((m) => !m.read);
-    const blocked = state.tasks.filter((t) => t.status === 'blocked');
+    const of = (...st) => state.tasks.filter((t) => st.includes(t.status));
     start('lead', null, 'planning', () => ({
       cwd: git.mainWorktreePath(state.folder),
       prompt: [
         `Goal: ${state.goal}`,
         `New messages from the product owner:\n${list(unread.map((m) => m.text))}`,
-        `Done tasks:\n${list(state.tasks.filter((t) => t.status === 'done').map((t) => `T${t.id}: ${t.title}`))}`,
-        `Backlog:\n${list(backlog.map((t) => `T${t.id}: ${t.title}`))}`,
-        `Blocked tasks (drop or replace them via dropTaskIds/newTasks):\n${list(blocked.map((t) => `T${t.id}: ${t.title} (notes: ${t.notes.join(' | ')})`))}`,
-        'Plan the next tasks.',
+        `Done tasks:\n${list(of('done').map((t) => t.title))}`,
+        `Open tasks (backlog, in progress, in review; do not plan these again):\n${list(of(...OPEN).map((t) => `T${t.id} [${t.role}] ${t.title}`))}`,
+        `Blocked tasks (drop or replace them via dropTaskIds/newTasks):\n${list(of('blocked').map((t) => `T${t.id} [${t.role}] ${t.title} (notes: ${t.notes.join(' | ')})`))}`,
+        'Plan QA tasks only for features that are already done.',
+        'Plan the next tasks. Use dropTaskIds to remove backlog or blocked tasks that are obsolete.',
       ].join('\n\n'),
     }), (res) => {
       if (!res.ok) return failLead(res.error);
       const { summary, newTasks, dropTaskIds = [] } = res.output;
       for (const m of unread) m.read = true;
-      state.tasks = state.tasks.filter((t) => !(t.status === 'blocked' && dropTaskIds.includes(t.id)));
-      if (addNew(newTasks, 'lead') === 0) state.leadIdle = true;
+      const drop = state.tasks.filter((t) => ['backlog', 'blocked'].includes(t.status) && dropTaskIds.includes(t.id));
+      for (const t of drop) try { git.removeTaskWorktree(state.folder, t.id, { keepBranchAs: `task-${t.id}` }); } catch {}
+      state.tasks = state.tasks.filter((t) => !drop.includes(t));
+      addNew(newTasks, 'lead');
+      state.leadIdle = true; // replan only after a task finishes, gets blocked, or the owner writes
       emit(name('lead'), summary || 'planned');
     }, failLead);
   }

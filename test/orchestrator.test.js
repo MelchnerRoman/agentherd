@@ -303,7 +303,6 @@ test('lead result: adds tasks, drops blocked ones, marks messages read', async (
   await last('lead').resolve(plan([{ title: 'A', description: 'a', role: 'frontend' }], [blocked.id]));
   assert.deepEqual(state.tasks.map((t) => [t.title, t.createdBy, t.status]), [['A', 'lead', 'backlog']]);
   assert.equal(state.messages[0].read, true);
-  assert.equal(state.leadIdle, false);
 });
 
 test('newTasks from a worker are added with createdBy role', async () => {
@@ -414,4 +413,60 @@ test('worker done without changes → done, no review, worktree removed', async 
   assert.equal(fs.existsSync(w.cwd), false);
   assert.equal(execFileSync('git', ['branch', '--list', 'task-1'], { cwd: folder, encoding: 'utf8' }), '');
   assert.equal(state.leadIdle, false);
+});
+
+test('lead prompt lists open, done and blocked tasks', () => {
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend', title: 'Build login' }, { role: 'backend', title: 'Add API' }, { role: 'qa', title: 'Old thing' }, { role: 'qa', title: 'Stuck thing' }] });
+  state.tasks[1].status = 'review';
+  state.tasks[2].status = 'done';
+  state.tasks[3].status = 'blocked';
+  state.tasks[3].notes.push('kept failing');
+  o.tick();
+  const p = last('lead').prompt;
+  assert.match(p, /T1 \[frontend\] Build login/);
+  assert.match(p, /T2 \[backend\] Add API/);
+  assert.match(p, /Old thing/);
+  assert.match(p, /T4 \[qa\] Stuck thing.*kept failing/);
+  assert.match(p, /Plan QA tasks only for features that are already done\./);
+});
+
+test('lead is idle after every successful plan', async () => {
+  const { state, o, last, count } = setup();
+  o.tick();
+  await last('lead').resolve(plan([{ title: 'A', description: 'a', role: 'frontend' }]));
+  assert.equal(state.leadIdle, true);
+  o.tick();
+  assert.equal(count('lead'), 1);
+});
+
+test('lead can drop backlog and blocked tasks; worktree dir goes, branch stays', async () => {
+  const { state, o, last, folder } = setup();
+  o.tick();
+  const b = addTask(state, { title: 'retry me', description: 'd', role: 'qa', createdBy: 'test' });
+  const x = addTask(state, { title: 'stuck', description: 'd', role: 'qa', createdBy: 'test' });
+  x.status = 'blocked';
+  const r = addTask(state, { title: 'in review', description: 'd', role: 'qa', createdBy: 'test' });
+  r.status = 'review';
+  const wt = gitModule.taskWorktree(folder, b.id);
+  fs.writeFileSync(path.join(wt, 'half.txt'), 'h\n');
+  gitModule.commitAll(wt, 'half done');
+  state.status = 'paused';
+  await last('lead').resolve(plan([], [b.id, x.id, r.id]));
+  assert.deepEqual(state.tasks.map((t) => t.title), ['in review']);
+  assert.equal(fs.existsSync(wt), false);
+  assert.match(execFileSync('git', ['branch', '--list', `task-${b.id}`], { cwd: folder, encoding: 'utf8' }), new RegExp(`task-${b.id}`));
+});
+
+test('addNew skips titles matching a non-done task', async () => {
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend', title: 'Build Login' }, { role: 'qa', title: 'Write tests' }] });
+  state.tasks[1].status = 'done';
+  o.tick();
+  state.status = 'paused';
+  await last('lead').resolve(plan([
+    { title: '  build login ', description: 'dup', role: 'frontend' },
+    { title: 'Write tests', description: 'again, old one is done', role: 'qa' },
+    { title: 'New', description: 'n', role: 'backend' },
+    { title: 'new', description: 'dup in batch', role: 'backend' },
+  ]));
+  assert.deepEqual(state.tasks.map((t) => t.title), ['Build Login', 'Write tests', 'Write tests', 'New']);
 });
