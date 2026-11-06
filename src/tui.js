@@ -103,7 +103,7 @@ export function startTui(port, folder) {
       }
       case '/agents': return say((await post('/api/control', { maxAgents: Number(arg) })) ?? `Max agents set to ${arg}.`);
       case '/tasks': return show(state ? tasksText(state) : 'No state yet.');
-      case '/task': return show(state ? taskText(state, Number(String(arg ?? '').replace(/^T/i, ''))) : 'No state yet.');
+      case '/task': if (!arg) return say('Usage: /task <id>'); return show(state ? taskText(state, Number(String(arg ?? '').replace(/^T/i, ''))) : 'No state yet.');
       case '/web': openUrl(`http://localhost:${port}`); return say(`Opening http://localhost:${port}`);
       case '/quit': return detach('Team keeps working in the background. Run agentherd again to watch.');
       default: return say(HELP);
