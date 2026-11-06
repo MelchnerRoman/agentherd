@@ -56,6 +56,12 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
     if (diff.length > DIFF_CAP) diff = diff.slice(0, DIFF_CAP) + '\n[diff truncated]';
     task.reviewing = true;
     const prompt = `Review this change.\n\n${fmtTask(task)}\n\nDiff against agentherd:\n${diff || '(empty diff)'}`;
+    const reject = (note, text) => {
+      task.reviewRounds++;
+      task.notes.push(note);
+      task.status = task.reviewRounds >= 3 ? 'blocked' : 'backlog';
+      emit(name('reviewer'), `${text} (${task.status}): ${note}`);
+    };
     start('reviewer', task, prompt, cwd, (res) => {
       task.reviewing = false;
       if (!res.ok) return emit(name('reviewer'), `review of T${task.id} failed: ${res.error}`);
@@ -70,16 +76,12 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
           state.leadIdle = false;
           emit(name('reviewer'), `approved and merged T${task.id} (${m.commit})`);
         } else {
-          task.notes.push('merge conflict: rebase on agentherd');
-          task.status = 'backlog';
-          emit(name('reviewer'), `T${task.id} approved but has a merge conflict; back to backlog`);
+          // start the redo fresh from the current agentherd
+          git.removeTaskWorktree(state.folder, task.id);
+          task.branch = null;
+          reject('merge conflict: redo on top of current agentherd', `T${task.id} approved but has a merge conflict`);
         }
-      } else {
-        task.reviewRounds++;
-        task.notes.push(notes);
-        task.status = task.reviewRounds >= 3 ? 'blocked' : 'backlog';
-        emit(name('reviewer'), `rejected T${task.id} (${task.status}): ${notes}`);
-      }
+      } else reject(notes, `rejected T${task.id}`);
     }, `reviewing T${task.id}: ${task.title}`);
   }
 
@@ -120,7 +122,10 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       'Plan the next tasks.',
     ].join('\n\n');
     start('lead', null, prompt, git.mainWorktreePath(state.folder), (res) => {
-      if (!res.ok) return emit(name('lead'), `planning failed: ${res.error}`);
+      if (!res.ok) {
+        state.leadIdle = true; // don't respawn a failing Lead in a tight loop
+        return emit(name('lead'), `planning failed: ${res.error}`);
+      }
       const { summary, newTasks, dropTaskIds = [] } = res.output;
       for (const m of unread) m.read = true;
       state.tasks = state.tasks.filter((t) => !(t.status === 'blocked' && dropTaskIds.includes(t.id)));

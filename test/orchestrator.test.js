@@ -94,8 +94,18 @@ test('review rejected 3 times → blocked', async () => {
   assert.deepEqual(t.notes, ['round 1', 'round 2', 'round 3']);
 });
 
+const conflictGit = () => {
+  const removed = [];
+  const git = {
+    ...gitModule,
+    mergeTask: () => ({ ok: false, conflict: true }),
+    removeTaskWorktree: (f, id) => { removed.push(id); gitModule.removeTaskWorktree(f, id); },
+  };
+  return { git, removed };
+};
+
 test('review approved but merge conflict → backlog with conflict note', async () => {
-  const git = { ...gitModule, mergeTask: () => ({ ok: false, conflict: true }) };
+  const { git, removed } = conflictGit();
   const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
   o.tick();
   await last('frontend').resolve(done());
@@ -103,8 +113,25 @@ test('review approved but merge conflict → backlog with conflict note', async 
   await last('reviewer').resolve(review(true));
   const t = state.tasks[0];
   assert.equal(t.status, 'backlog');
-  assert.deepEqual(t.notes, ['merge conflict: rebase on agentherd']);
+  assert.deepEqual(t.notes, ['merge conflict: redo on top of current agentherd']);
   assert.equal(t.commit, null);
+  assert.equal(t.branch, null);
+  assert.equal(t.reviewRounds, 1);
+  assert.deepEqual(removed, [1]);
+});
+
+test('third merge conflict → blocked', async () => {
+  const { git, removed } = conflictGit();
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
+  o.tick();
+  for (let i = 0; i < 3; i++) {
+    assert.equal(state.tasks[0].status, 'in_progress');
+    await last('frontend').resolve(done());
+    await last('reviewer').resolve(review(true));
+  }
+  assert.equal(state.tasks[0].status, 'blocked');
+  assert.equal(state.tasks[0].reviewRounds, 3);
+  assert.deepEqual(removed, [1, 1, 1]);
 });
 
 test('failed twice → blocked', async () => {
@@ -219,6 +246,20 @@ test('lead returning no tasks is not re-run until a task finishes', async () => 
   await last('backend').resolve(done());
   await last('reviewer').resolve(review(true));
   assert.equal(state.leadIdle, false);
+  assert.equal(count('lead'), 2);
+});
+
+test('lead failure is not re-run until a task finishes', async () => {
+  const { state, o, last, count } = setup();
+  o.tick();
+  await last('lead').resolve({ ok: false, error: 'boom' });
+  assert.equal(state.leadIdle, true);
+  assert.equal(count('lead'), 1);
+  assert.ok(state.activity.some((a) => /boom/.test(a.text)));
+  addTask(state, { title: 'x', description: 'y', role: 'backend', createdBy: 'test' });
+  o.tick();
+  await last('backend').resolve(done());
+  await last('reviewer').resolve(review(true));
   assert.equal(count('lead'), 2);
 });
 
