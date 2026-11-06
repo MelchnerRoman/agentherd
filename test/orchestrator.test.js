@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import * as gitModule from '../src/git.js';
 import { createState, addTask } from '../src/store.js';
 import { createOrchestrator } from '../src/orchestrator.js';
@@ -99,21 +100,25 @@ const conflictGit = () => {
   const git = {
     ...gitModule,
     mergeTask: () => ({ ok: false, conflict: true }),
-    removeTaskWorktree: (f, id) => { removed.push(id); gitModule.removeTaskWorktree(f, id); },
+    removeTaskWorktree: (f, id, opts) => { removed.push(id); gitModule.removeTaskWorktree(f, id, opts); },
   };
   return { git, removed };
 };
 
-test('review approved but merge conflict → backlog with conflict note', async () => {
+test('review approved but merge conflict → backlog with conflict note, work kept on a branch', async () => {
   const { git, removed } = conflictGit();
-  const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
+  const { state, o, last, folder } = setup({ tasks: [{ role: 'frontend' }], git });
   o.tick();
+  fs.writeFileSync(path.join(last('frontend').cwd, 'f.txt'), 'work\n');
   await last('frontend').resolve(done());
   state.status = 'paused';
   await last('reviewer').resolve(review(true));
   const t = state.tasks[0];
   assert.equal(t.status, 'backlog');
-  assert.deepEqual(t.notes, ['merge conflict: redo on top of current agentherd']);
+  assert.deepEqual(t.notes, ['merge conflict: redo on top of current agentherd (previous attempt kept as branch task-1-conflict-1)']);
+  const branches = execFileSync('git', ['branch', '--list', 'task-1*'], { cwd: folder, encoding: 'utf8' });
+  assert.match(branches, /task-1-conflict-1/);
+  assert.doesNotMatch(branches, /task-1\n/);
   assert.equal(t.commit, null);
   assert.equal(t.branch, null);
   assert.equal(t.reviewRounds, 1);
@@ -132,6 +137,21 @@ test('third merge conflict → blocked', async () => {
   assert.equal(state.tasks[0].status, 'blocked');
   assert.equal(state.tasks[0].reviewRounds, 3);
   assert.deepEqual(removed, [1, 1, 1]);
+});
+
+test('worktree cleanup failing after a merge still marks the task done', async () => {
+  const git = { ...gitModule, removeTaskWorktree: () => { throw new Error('cleanup broke'); } };
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
+  o.tick();
+  fs.writeFileSync(path.join(last('frontend').cwd, 'f.txt'), 'x\n');
+  await last('frontend').resolve(done());
+  state.status = 'paused';
+  await last('reviewer').resolve(review(true));
+  const t = state.tasks[0];
+  assert.equal(t.status, 'done');
+  assert.ok(t.commit);
+  assert.equal(t.attempts, 0);
+  assert.equal(state.leadIdle, false);
 });
 
 test('failed twice → blocked', async () => {

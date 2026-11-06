@@ -17,6 +17,15 @@ test('buildArgs includes dontAsk and schema', () => {
   assert.ok(schema.properties.status);
 });
 
+test('buildArgs: lead and reviewer get read-only tools, workers the full list', () => {
+  const tools = (role) => buildArgs(role, 'x').slice(buildArgs(role, 'x').indexOf('--allowedTools') + 1);
+  const readOnly = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)'];
+  assert.deepEqual(tools(ROLES.lead), readOnly);
+  assert.deepEqual(tools(ROLES.reviewer), readOnly);
+  assert.ok(tools(ROLES.frontend).includes('Edit'));
+  assert.ok(tools(ROLES.frontend).includes('Bash(npm *)'));
+});
+
 test('parseLine tool_use', () => {
   const line = '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"src/a.js"}}]}}';
   assert.deepEqual(parseLine(line), { activity: 'Edit src/a.js' });

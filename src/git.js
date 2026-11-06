@@ -57,16 +57,26 @@ export const diffVsIntegration = (dir) => run(dir, 'diff', 'agentherd...HEAD');
 
 export function mergeTask(folder, taskId, title) {
   const main = mainWorktreePath(folder);
+  // _main belongs to agentherd: drop anything an agent left lying around so it can't block the merge
+  run(main, 'reset', '--hard');
+  run(main, 'clean', '-fd');
   try {
     run(main, ...IDENT, 'merge', '--no-ff', `task-${taskId}`, '-m', `T${taskId}: ${title}`);
-  } catch {
-    ok(main, 'merge', '--abort');
-    return { ok: false, conflict: true };
+  } catch (e) {
+    const merging = ok(main, 'rev-parse', '-q', '--verify', 'MERGE_HEAD');
+    const conflict = merging && run(main, 'ls-files', '-u') !== '';
+    if (merging) ok(main, 'merge', '--abort');
+    if (conflict) return { ok: false, conflict: true };
+    throw e;
   }
   return { ok: true, commit: run(main, 'rev-parse', '--short', 'HEAD') };
 }
 
-export function removeTaskWorktree(folder, taskId) {
-  run(folder, 'worktree', 'remove', '--force', path.join(wtRoot(folder), `T${taskId}`));
-  run(folder, 'branch', '-D', `task-${taskId}`);
+// keepBranchAs: keep the task's branch (renamed if the name differs) instead of deleting it
+export function removeTaskWorktree(folder, taskId, { keepBranchAs } = {}) {
+  const dir = path.join(wtRoot(folder), `T${taskId}`);
+  const branch = `task-${taskId}`;
+  if (fs.existsSync(dir)) run(folder, 'worktree', 'remove', '--force', dir);
+  if (keepBranchAs === undefined) run(folder, 'branch', '-D', branch);
+  else if (keepBranchAs !== branch) run(folder, 'branch', '-m', branch, keepBranchAs);
 }

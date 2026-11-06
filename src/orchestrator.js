@@ -96,17 +96,19 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       addNew(newTasks, 'reviewer');
       if (!approved) return reject(notes, `rejected T${task.id}`);
       const m = git.mergeTask(state.folder, task.id, task.title);
-      // either way the worktree goes: done, or a conflict redo starts fresh from the current agentherd
-      git.removeTaskWorktree(state.folder, task.id);
       if (m.ok) {
         task.status = 'done';
         task.commit = m.commit;
         state.leadIdle = false;
         emit(name('reviewer'), `approved and merged T${task.id} (${m.commit})`);
-      } else {
-        task.branch = null;
-        reject('merge conflict: redo on top of current agentherd', `T${task.id} approved but has a merge conflict`);
+        try { git.removeTaskWorktree(state.folder, task.id); } catch {} // merged already; leftovers are harmless
+        return;
       }
+      // the redo starts fresh from the current agentherd; the approved attempt stays on a side branch
+      const kept = `task-${task.id}-conflict-${task.reviewRounds + 1}`;
+      git.removeTaskWorktree(state.folder, task.id, { keepBranchAs: kept });
+      task.branch = null;
+      reject(`merge conflict: redo on top of current agentherd (previous attempt kept as branch ${kept})`, `T${task.id} approved but has a merge conflict`);
     }, (msg) => failTask('reviewer', task, msg, 'review'));
   }
 

@@ -102,3 +102,41 @@ test('prepareRepo on existing repo with zero commits does not add user files', (
   prepareRepo(f);
   assert.equal(git(f, 'ls-tree', '-r', '--name-only', 'agentherd'), '');
 });
+
+test('merge succeeds although _main is dirty (modified + untracked files)', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const w0 = taskWorktree(f, 0);
+  fs.writeFileSync(path.join(w0, 'a.txt'), 'a\n');
+  commitAll(w0, 'a');
+  assert.equal(mergeTask(f, 0, 'a').ok, true);
+  const main = mainWorktreePath(f);
+  fs.writeFileSync(path.join(main, 'a.txt'), 'scribbled\n');
+  fs.writeFileSync(path.join(main, 'y.txt'), 'stray\n');
+  const w1 = taskWorktree(f, 1);
+  fs.writeFileSync(path.join(w1, 'y.txt'), 'real\n');
+  fs.writeFileSync(path.join(w1, 'a.txt'), 'changed\n');
+  commitAll(w1, 'y');
+  assert.equal(mergeTask(f, 1, 'y').ok, true);
+  assert.equal(fs.readFileSync(path.join(main, 'y.txt'), 'utf8'), 'real\n');
+  assert.equal(git(main, 'status', '--porcelain'), '');
+});
+
+test('mergeTask rethrows failures that are not conflicts', () => {
+  const f = tmp();
+  prepareRepo(f);
+  assert.throws(() => mergeTask(f, 42, 'no such branch'));
+});
+
+test('removeTaskWorktree keepBranchAs renames the branch', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const wt = taskWorktree(f, 1);
+  fs.writeFileSync(path.join(wt, 'x.txt'), 'x');
+  commitAll(wt, 'x');
+  removeTaskWorktree(f, 1, { keepBranchAs: 'task-1-conflict-1' });
+  assert.ok(!fs.existsSync(wt));
+  assert.equal(git(f, 'branch', '--list', 'task-1'), '');
+  assert.notEqual(git(f, 'branch', '--list', 'task-1-conflict-1'), '');
+  removeTaskWorktree(f, 2, { keepBranchAs: 'task-2' }); // never started: no dir, no branch
+});

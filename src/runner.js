@@ -1,7 +1,12 @@
 import { spawn } from 'node:child_process';
 import { SCHEMAS } from './roles.js';
 
-const TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)', 'Bash(ls *)', 'Bash(git status*)', 'Bash(git diff*)', 'Bash(git log*)'];
+const READ_ONLY = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)'];
+const TOOLS = {
+  lead: READ_ONLY,
+  reviewer: READ_ONLY,
+  worker: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)', 'Bash(ls *)', 'Bash(git status*)', 'Bash(git diff*)', 'Bash(git log*)'],
+};
 
 export function buildArgs(role, prompt) {
   return [
@@ -11,7 +16,7 @@ export function buildArgs(role, prompt) {
     '--json-schema', JSON.stringify(SCHEMAS[role.kind]),
     '--append-system-prompt', role.prompt,
     '--permission-mode', 'dontAsk',
-    '--allowedTools', ...TOOLS,
+    '--allowedTools', ...TOOLS[role.kind],
   ];
 }
 
@@ -34,6 +39,8 @@ export const isLimitError = (r) =>
 
 export function runAgent({ role, prompt, cwd, onActivity }) {
   const child = spawn(process.env.AGENTHERD_CLAUDE ?? 'claude', buildArgs(role, prompt), { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
   let killed = false, buf = '', stderr = '', result = null;
   const handle = (line) => {
     const p = parseLine(line);
