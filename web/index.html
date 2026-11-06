@@ -211,6 +211,7 @@ function showStopped(){
     'Team stopped. Run ',el('code','','agentherd'),' in this folder to start it again.');
   document.querySelectorAll('button,select,textarea').forEach(e=>e.disabled=true);
   $('status').textContent='stopped';$('status').className='pill stopped';
+  const poll=setInterval(()=>fetch('/api/state').then(r=>{if(r.ok){clearInterval(poll);location.reload()}}).catch(()=>{}),3000);
 }
 
 function connect(){

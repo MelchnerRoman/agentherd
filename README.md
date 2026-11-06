@@ -40,7 +40,7 @@ From the shell: `agentherd stop` stops the team, `agentherd web` opens the dashb
 
 ## Getting the work
 
-The team works on a branch called `agentherd`, created from your current commit. It never pushes and never touches your branch or your checkout. To take the result:
+The team works on a branch called `agentherd`, created from your current commit. It never pushes and never touches your branch or your checkout. The team only sees committed code, so commit your changes before starting it. To take the result:
 
 ```sh
 git merge agentherd
