@@ -48,6 +48,10 @@ function shutdown() {
 const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, 'http://x');
   try {
+    // DNS rebinding / CSRF: only our own origin, and only JSON posts (forms can't send that cross-site)
+    const port = server.address().port;
+    if (![`localhost:${port}`, `127.0.0.1:${port}`].includes(req.headers.host)) return send(res, 403, { error: 'forbidden host' });
+    if (req.method === 'POST' && (req.headers['content-type'] ?? '').split(';')[0].trim() !== 'application/json') return send(res, 415, { error: 'expected application/json' });
     if (req.method === 'GET' && pathname === '/') {
       try {
         const html = fs.readFileSync(new URL('../web/index.html', import.meta.url));

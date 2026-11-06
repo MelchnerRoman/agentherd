@@ -32,7 +32,7 @@ export function api(port, method, urlPath, body) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
     const req = http.request({ host: '127.0.0.1', port, method, path: urlPath,
-      headers: data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {} }, (res) => {
+      headers: { 'Content-Type': 'application/json', ...(data && { 'Content-Length': Buffer.byteLength(data) }) } }, (res) => {
       let b = '';
       res.on('data', (c) => (b += c));
       res.on('end', () => {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { createState, saveState } from '../src/store.js';
 import { readDaemon, ensureDaemon, api, subscribe } from '../src/client.js';
 
@@ -66,4 +67,19 @@ test('stop exits and removes daemon.json', async () => {
   assert.equal((await api(port, 'POST', '/api/control', { action: 'stop' }))._status, 200);
   assert.ok(await gone(pid));
   assert.equal(fs.existsSync(path.join(f, '.agentherd/daemon.json')), false);
+});
+
+const raw = (port, { method = 'GET', path: p = '/api/state', headers = {}, body } = {}) => new Promise((resolve, reject) => {
+  const req = http.request({ host: '127.0.0.1', port, method, path: p, headers }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+  req.on('error', reject);
+  req.end(body);
+});
+
+test('rejects foreign Host headers and non-JSON posts', async () => {
+  const f = mk();
+  const { port } = await ensureDaemon(f);
+  assert.equal(await raw(port, { headers: { Host: `evil.example:${port}` } }), 403);
+  assert.equal(await raw(port, { headers: { Host: `localhost:${port}` } }), 200);
+  assert.equal(await raw(port, { method: 'POST', path: '/api/message', headers: { 'Content-Type': 'text/plain' }, body: '{"text":"hi"}' }), 415);
+  assert.equal(await raw(port, { method: 'POST', path: '/api/message', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: '{"text":"hi"}' }), 200);
 });
