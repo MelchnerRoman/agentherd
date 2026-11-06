@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentHerd</title>
+<style>
+:root{
+  --bg:#eceff3; --panel:#fff; --ink:#16202c; --mute:#5b6878; --line:#d3d9e1;
+  --accent:#2f5bea; --accent-ink:#fff; --work:#0d8f6b; --warn:#b4570a; --bad:#b3261e;
+  --warnbg:#fff1dc; --sel:#e6ecff;
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f151d; --panel:#18212c; --ink:#e6ebf2; --mute:#93a0b1; --line:#2a3544;
+  --accent:#7d9bff; --accent-ink:#0b1220; --work:#3fd0a1; --warn:#f0a85a; --bad:#ff8a80;
+  --warnbg:#3a2a14; --sel:#22304f;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--sans)}
+button,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header{padding:20px 24px 14px;display:flex;flex-wrap:wrap;gap:16px 32px;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line)}
+.goal{max-width:62ch}
+.goal h1{margin:0;font:600 26px/1.2 var(--serif)}
+.goal p{margin:6px 0 0;color:var(--mute);font-size:13px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{padding:3px 10px;border-radius:99px;border:1px solid var(--line);font-size:13px;font-weight:600}
+.pill.running{color:var(--work);border-color:var(--work)}
+.pill.paused,.pill.limited{color:var(--warn);border-color:var(--warn)}
+.pill.stopped{color:var(--bad);border-color:var(--bad)}
+button,select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.banner{margin:0;padding:10px 24px;background:var(--warnbg);color:var(--warn);font-weight:600;border-bottom:1px solid var(--warn)}
+.banner.stop{background:var(--bad);color:var(--bg);border:0;font-size:16px}
+.banner code{font-family:var(--mono)}
+main{padding:20px 24px;display:grid;gap:24px;grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+@media(max-width:980px){main{grid-template-columns:1fr}}
+h2{margin:0 0 10px;font:600 16px/1 var(--sans)}
+.agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:24px}
+.agent{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:6px;padding:10px 12px;min-height:84px}
+.agent.working{border-left-color:var(--work)}
+.agent b{display:block}
+.agent .st{font-size:13px;color:var(--mute)}
+.agent.working .st{color:var(--work);font-weight:600}
+.agent .tt{font-size:13px;margin-top:4px;overflow-wrap:anywhere}
+.board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media(max-width:700px){.board{grid-template-columns:1fr}}
+.col{background:color-mix(in srgb,var(--panel) 55%,transparent);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:90px}
+.col h3{margin:2px 4px 8px;font:600 14px/1 var(--sans);display:flex;justify-content:space-between}
+.col h3 span{font-variant-numeric:tabular-nums;color:var(--mute)}
+.blocked{margin-top:10px;border-color:var(--bad)}
+.blocked h3{color:var(--bad)}
+.blocked .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}
+.card{display:block;width:100%;text-align:left;margin:0 0 6px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.card.sel{background:var(--sel);border-color:var(--accent)}
+.card .ti{display:block;font-size:14px;overflow-wrap:anywhere}
+.card .me{display:block;margin-top:3px;font-size:12px;color:var(--mute)}
+.card .rv{color:var(--accent);font-weight:600}
+.empty{color:var(--mute);font-size:13px;margin:4px}
+#detail{margin-top:14px;background:var(--panel);border:1px solid var(--accent);border-radius:6px;padding:14px 16px}
+#detail[hidden]{display:none}
+#detail h2{font:600 18px/1.3 var(--serif);margin-bottom:6px}
+#detail dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin:8px 0;font-size:13px}
+#detail dt{color:var(--mute)}
+#detail dd{margin:0;overflow-wrap:anywhere}
+#detail pre{white-space:pre-wrap;font:14px/1.5 var(--sans);margin:6px 0}
+#detail ul{margin:4px 0;padding-left:20px;font-size:13px}
+#detail .x{float:right}
+aside section{margin-bottom:24px}
+textarea{width:100%;min-height:84px;resize:vertical;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px}
+.send{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:12px;color:var(--mute)}
+.feed{list-style:none;margin:0;padding:0;max-height:480px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.feed li{padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}
+.feed li:last-child{border:0}
+.feed time{color:var(--mute);font-variant-numeric:tabular-nums;margin-right:6px}
+.feed b{margin-right:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="goal"><h1 id="goal">Connecting to the team…</h1><p id="folder"></p></div>
+  <div class="controls">
+    <span id="status" class="pill"></span>
+    <button id="pause">Pause</button>
+    <button id="resume" class="primary">Resume</button>
+    <button id="stop">Stop</button>
+    <label>Agents at once <select id="max"></select></label>
+  </div>
+</header>
+<p id="banner" class="banner" hidden></p>
+<main>
+  <div>
+    <h2>Team</h2>
+    <div id="agents" class="agents"></div>
+    <h2>Tasks</h2>
+    <div id="board" class="board"></div>
+    <div id="blocked" class="col blocked"></div>
+    <div id="detail" hidden></div>
+  </div>
+  <aside>
+    <section>
+      <h2>Message the team</h2>
+      <textarea id="msg" placeholder="Tell the Lead what you want next. Cmd+Enter sends."></textarea>
+      <div class="send"><span id="sent"></span><button id="send" class="primary">Send</button></div>
+    </section>
+    <section><h2>Activity</h2><ul id="feed" class="feed"></ul></section>
+  </aside>
+</main>
+<script>
+const ROLES={lead:'Lead',researcher:'Researcher',frontend:'Frontend dev',backend:'Backend dev',qa:'QA',reviewer:'Reviewer'};
+const COLS=[['backlog','Backlog'],['in_progress','In progress'],['review','Review'],['done','Done']];
+const $=id=>document.getElementById(id);
+let S=null, selected=null, stopped=false;
+
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+const time=t=>new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+const taskById=id=>S.tasks.find(t=>t.id===id);
+
+async function post(path,body){
+  try{
+    const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||r.status);
+    return true;
+  }catch(e){$('sent').textContent='Failed: '+e.message;return false}
+}
+
+function card(t){
+  const b=el('button','card'+(t.id===selected?' sel':''));
+  b.append(el('span','ti','#'+t.id+' '+t.title));
+  let m=ROLES[t.role]||t.role;
+  if(t.attempts>1)m+=', attempt '+t.attempts;
+  if(t.reviewRounds)m+=', review round '+t.reviewRounds;
+  const me=el('span','me',m);
+  if(t.status==='review'&&t.reviewing)me.append(' ',el('span','rv','being reviewed'));
+  b.append(me);
+  b.onclick=()=>{selected=t.id;render()};
+  return b;
+}
+
+function renderDetail(){
+  const d=$('detail'),t=selected&&taskById(selected);
+  d.replaceChildren();
+  d.hidden=!t;
+  if(!t)return;
+  const x=el('button','x','Close');x.onclick=()=>{selected=null;render()};
+  d.append(x,el('h2','','#'+t.id+' '+t.title),el('pre','',t.description||'No description.'));
+  const dl=el('dl');
+  const row=(k,v)=>{if(v===null||v===undefined||v==='')return;dl.append(el('dt','',k),el('dd','',String(v)))};
+  row('Role',ROLES[t.role]||t.role);row('Status',t.status.replace('_',' ')+(t.reviewing?' (being reviewed)':''));
+  row('Created by',t.createdBy);row('Attempts',t.attempts);row('Review rounds',t.reviewRounds);
+  row('Branch',t.branch);row('Commit',t.commit);
+  d.append(dl);
+  if(t.notes&&t.notes.length){d.append(el('b','','Notes'));const ul=el('ul');t.notes.forEach(n=>ul.append(el('li','',n)));d.append(ul)}
+}
+
+function render(){
+  const s=S;
+  $('goal').textContent=s.goal||'No goal set';
+  $('folder').textContent=s.folder+(s.existingCode?' (existing code)':'');
+  const st=$('status');st.textContent=s.status;st.className='pill '+s.status;
+  $('pause').disabled=s.status!=='running';
+  $('resume').disabled=s.status==='running'||s.status==='stopped';
+  if(document.activeElement!==$('max'))$('max').value=s.maxAgents;
+  const bn=$('banner');
+  bn.hidden=s.status!=='limited';
+  if(!bn.hidden)bn.textContent='Usage limit reached. The team resumes'+(s.resumeAt?' at '+new Date(s.resumeAt).toLocaleTimeString():' soon')+'.';
+
+  const ag=$('agents');ag.replaceChildren();
+  for(const [id,name] of Object.entries(ROLES)){
+    const a=(s.agents||{})[id]||{status:'idle'},w=a.status==='working',t=w&&a.taskId!=null?taskById(a.taskId):null;
+    const c=el('div','agent'+(w?' working':''));
+    c.append(el('b','',name),el('span','st',w?'Working':'Idle'));
+    if(t)c.append(el('div','tt','#'+t.id+' '+t.title));
+    else if(id==='lead'&&!w&&s.leadIdle)c.append(el('div','tt','Waiting for your next message'));
+    ag.append(c);
+  }
+
+  const bd=$('board');bd.replaceChildren();
+  for(const [k,label] of COLS){
+    const col=el('div','col'),h=el('h3','',label);
+    h.append(el('span','',String((s.counts||{})[k]||0)));
+    col.append(h);
+    const ts=s.tasks.filter(t=>t.status===k);
+    if(!ts.length)col.append(el('p','empty','Nothing here'));
+    ts.forEach(t=>col.append(card(t)));
+    bd.append(col);
+  }
+  const bl=$('blocked');bl.replaceChildren();
+  const bt=s.tasks.filter(t=>t.status==='blocked');
+  const h=el('h3','','Blocked');h.append(el('span','',String(bt.length)));
+  bl.append(h);
+  if(bt.length){const w=el('div','cards');bt.forEach(t=>w.append(card(t)));bl.append(w)}
+  else bl.append(el('p','empty','Nothing is stuck'));
+  renderDetail();
+
+  const f=$('feed');f.replaceChildren();
+  for(const a of (s.activity||[]).slice(-50).reverse()){
+    const li=el('li');li.append(el('time','',time(a.t)),el('b','',a.agent),a.text);f.append(li);
+  }
+  if(!f.children.length)f.append(el('li','','No activity yet'));
+}
+
+function showStopped(){
+  stopped=true;
+  const b=$('banner');b.hidden=false;b.className='banner stop';b.replaceChildren(
+    'Team stopped. Run ',el('code','','agentherd'),' in this folder to start it again.');
+  document.querySelectorAll('button,select,textarea').forEach(e=>e.disabled=true);
+  $('status').textContent='stopped';$('status').className='pill stopped';
+}
+
+function connect(){
+  const es=new EventSource('/api/events');
+  es.onmessage=e=>{S=JSON.parse(e.data);render()};
+  es.onerror=()=>{
+    // the daemon exits on Stop, so a dead stream means the team is gone
+    es.close();
+    setTimeout(()=>fetch('/api/state').then(r=>r.ok&&connect()).catch(showStopped),1500);
+  };
+}
+
+for(let i=1;i<=6;i++)$('max').append(new Option(i,i));
+$('pause').onclick=()=>post('/api/control',{action:'pause'});
+$('resume').onclick=()=>post('/api/control',{action:'resume'});
+$('stop').onclick=()=>{if(confirm('Stop the team? Running agents are cancelled.'))post('/api/control',{action:'stop'})};
+$('max').onchange=e=>post('/api/control',{maxAgents:Number(e.target.value)});
+async function send(){
+  const text=$('msg').value.trim();if(!text)return;
+  if(await post('/api/message',{text})){$('msg').value='';$('sent').textContent='Sent to the Lead'}
+}
+$('send').onclick=send;
+$('msg').onkeydown=e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();send()}};
+connect();
+</script>
+</body>
+</html>
