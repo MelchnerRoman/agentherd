@@ -1,0 +1,8 @@
+{
+  "name": "agentherd",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "agentherd": "bin/agentherd.js" },
+  "scripts": { "test": "node --test" },
+  "engines": { "node": ">=22" }
+}
