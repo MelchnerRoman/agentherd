@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { ROLES as ROLE_DEFS } from './roles.js';
 
-const ROLES = ['lead', 'researcher', 'frontend', 'backend', 'qa', 'reviewer'];
+const ROLES = Object.keys(ROLE_DEFS);
 const STATUSES = ['backlog', 'in_progress', 'review', 'done', 'blocked'];
 const statePath = (folder) => path.join(folder, '.agentherd', 'state.json');
 
