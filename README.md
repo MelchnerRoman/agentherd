@@ -11,7 +11,7 @@ agentHerd runs a self-planning team of six Claude agents (lead, researcher, fron
 ## Install
 
 ```sh
-git clone <this repo> agentHerd
+git clone https://github.com/MelchnerRoman/agentherd.git agentHerd
 cd agentHerd && npm link
 ```
 
