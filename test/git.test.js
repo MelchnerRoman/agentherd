@@ -80,3 +80,25 @@ test('merge conflict', () => {
   const gitDir = git(mainWorktreePath(f), 'rev-parse', '--git-dir');
   assert.ok(!fs.existsSync(path.resolve(mainWorktreePath(f), gitDir, 'MERGE_HEAD')));
 });
+
+test('prepareRepo on non-git folder with code commits that code', () => {
+  const f = tmp();
+  fs.writeFileSync(path.join(f, 'app.js'), 'x');
+  fs.mkdirSync(path.join(f, 'node_modules'));
+  fs.writeFileSync(path.join(f, 'node_modules', 'dep.js'), 'x');
+  fs.mkdirSync(path.join(f, '.agentherd'));
+  fs.writeFileSync(path.join(f, '.agentherd', 'state.json'), '{}');
+  prepareRepo(f);
+  const wt = taskWorktree(f, 1);
+  assert.ok(fs.existsSync(path.join(wt, 'app.js')));
+  assert.equal(git(f, 'ls-tree', '-r', '--name-only', 'agentherd'), 'app.js');
+  assert.match(fs.readFileSync(path.join(f, '.git/info/exclude'), 'utf8'), /^node_modules\/$/m);
+});
+
+test('prepareRepo on existing repo with zero commits does not add user files', () => {
+  const f = tmp();
+  git(f, 'init');
+  fs.writeFileSync(path.join(f, 'app.js'), 'x');
+  prepareRepo(f);
+  assert.equal(git(f, 'ls-tree', '-r', '--name-only', 'agentherd'), '');
+});

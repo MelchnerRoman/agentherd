@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const IDENT = ['-c', 'user.name=agentHerd', '-c', 'user.email=agentherd@local'];
-const run = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const run = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 }).trim();
 const ok = (cwd, ...args) => { try { run(cwd, ...args); return true; } catch { return false; } };
 const wtRoot = (folder) => path.join(folder, '.agentherd', 'worktrees');
 
@@ -17,14 +17,23 @@ function addWorktree(folder, dir, branch, from) {
 }
 
 export function prepareRepo(folder) {
-  if (!fs.existsSync(path.join(folder, '.git'))) run(folder, 'init');
-  if (!ok(folder, 'rev-parse', '--verify', '-q', 'HEAD')) run(folder, ...IDENT, 'commit', '--allow-empty', '-m', 'chore: agentherd initial commit');
+  const fresh = !fs.existsSync(path.join(folder, '.git'));
+  if (fresh) run(folder, 'init');
   const exclude = path.resolve(folder, run(folder, 'rev-parse', '--git-path', 'info/exclude'));
-  const cur = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '';
-  if (!cur.split('\n').includes('.agentherd/')) {
-    fs.mkdirSync(path.dirname(exclude), { recursive: true });
-    fs.appendFileSync(exclude, (cur && !cur.endsWith('\n') ? '\n' : '') + '.agentherd/\n');
+  let cur = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '';
+  fs.mkdirSync(path.dirname(exclude), { recursive: true });
+  for (const line of ['.agentherd/', 'node_modules/']) {
+    if (cur.split('\n').includes(line)) continue;
+    const add = (cur && !cur.endsWith('\n') ? '\n' : '') + line + '\n';
+    fs.appendFileSync(exclude, add);
+    cur += add;
   }
+  if (!ok(folder, 'rev-parse', '--verify', '-q', 'HEAD')) {
+    // a folder we just made a repo: commit its code so the team can see it; a user's empty repo stays theirs
+    if (fresh) run(folder, 'add', '-A');
+    run(folder, ...IDENT, 'commit', '--allow-empty', '-m', 'chore: agentherd initial commit');
+  }
+  run(folder, 'worktree', 'prune');
   if (!ok(folder, 'rev-parse', '--verify', '-q', 'refs/heads/agentherd')) run(folder, 'branch', 'agentherd', 'HEAD');
   const main = mainWorktreePath(folder);
   addWorktree(folder, main, 'agentherd');
