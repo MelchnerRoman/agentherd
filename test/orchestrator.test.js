@@ -290,3 +290,86 @@ test('newTasks from a worker are added with createdBy role', async () => {
   assert.equal(t.createdBy, 'qa');
   assert.equal(t.role, 'backend');
 });
+
+test('reviewer failing twice → blocked', async () => {
+  const { state, o, last, count } = setup({ tasks: [{ role: 'frontend' }] });
+  o.tick();
+  await last('frontend').resolve(done());
+  await last('reviewer').resolve({ ok: false, error: 'crash' });
+  const t = state.tasks[0];
+  assert.equal(t.status, 'review');
+  assert.equal(t.attempts, 1);
+  assert.equal(count('reviewer'), 2);
+  assert.equal(t.reviewing, true);
+  await last('reviewer').resolve({ ok: false, error: 'crash' });
+  assert.equal(t.status, 'blocked');
+  assert.equal(t.attempts, 2);
+  assert.equal(t.reviewing, false);
+  assert.deepEqual(t.notes, ['crash', 'crash']);
+});
+
+test('mergeTask throwing counts as a reviewer failure', async () => {
+  const git = { ...gitModule, mergeTask: () => { throw new Error('git exploded'); } };
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
+  o.tick();
+  await last('frontend').resolve(done());
+  state.status = 'paused';
+  await last('reviewer').resolve(review(true));
+  const t = state.tasks[0];
+  assert.equal(t.status, 'review');
+  assert.equal(t.attempts, 1);
+  assert.equal(t.reviewing, false);
+  assert.match(t.notes[0], /git exploded/);
+  assert.equal(o.running.has('reviewer'), false);
+});
+
+test('taskWorktree throwing on start → tick survives, task backlog with attempts 1', () => {
+  const git = { ...gitModule, taskWorktree: () => { throw new Error('worktree broke'); } };
+  const { state, o } = setup({ tasks: [{ role: 'frontend' }], git });
+  assert.doesNotThrow(() => o.tick());
+  const t = state.tasks[0];
+  assert.equal(t.status, 'backlog');
+  assert.equal(t.attempts, 1);
+  assert.equal(o.running.has('frontend'), false);
+  assert.deepEqual(state.agents.frontend, { status: 'idle', taskId: null });
+  assert.ok(state.activity.some((a) => /worktree broke/.test(a.text)));
+});
+
+test('diffVsIntegration throwing on reviewer start → reviewer failure on that task', async () => {
+  const git = { ...gitModule, diffVsIntegration: () => { throw new Error('diff broke'); } };
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
+  o.tick();
+  state.status = 'paused';
+  await last('frontend').resolve(done());
+  state.status = 'running';
+  assert.doesNotThrow(() => o.tick());
+  const t = state.tasks[0];
+  assert.equal(t.status, 'review');
+  assert.equal(t.attempts, 1);
+  assert.equal(t.reviewing, false);
+  assert.equal(o.running.has('reviewer'), false);
+});
+
+test('commitAll throwing → worker failure', async () => {
+  const git = { ...gitModule, commitAll: () => { throw new Error('commit broke'); } };
+  const { state, o, last } = setup({ tasks: [{ role: 'frontend' }], git });
+  o.tick();
+  state.status = 'paused';
+  await last('frontend').resolve(done());
+  const t = state.tasks[0];
+  assert.equal(t.status, 'backlog');
+  assert.equal(t.attempts, 1);
+  assert.match(t.notes[0], /commit broke/);
+});
+
+test('blocked task clears leadIdle', async () => {
+  const { state, o, last, count } = setup({ tasks: [{ role: 'backend' }] });
+  state.leadIdle = true;
+  state.tasks[0].attempts = 1;
+  o.tick();
+  assert.equal(count('lead'), 0);
+  await last('backend').resolve(failed);
+  assert.equal(state.tasks[0].status, 'blocked');
+  assert.equal(state.leadIdle, false);
+  assert.equal(count('lead'), 1);
+});
