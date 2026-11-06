@@ -7,7 +7,7 @@ import http from 'node:http';
 import { createState, saveState } from '../src/store.js';
 import { readDaemon, ensureDaemon, api, subscribe } from '../src/client.js';
 
-process.env.AGENTHERD_CLAUDE = new URL('./fake-claude.js', import.meta.url).pathname;
+process.env.AGENTHERD_CLAUDE = new URL('./fake-claude', import.meta.url).pathname;
 const folders = [];
 function mk() {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-d-'));

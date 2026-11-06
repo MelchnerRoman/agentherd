@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { ROLES } from '../src/roles.js';
 import { buildArgs, parseLine, isLimitError, runAgent } from '../src/runner.js';
 
-const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-claude.js');
+const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-claude');
 
 test('buildArgs includes dontAsk and schema', () => {
   const args = buildArgs(ROLES.researcher, 'do it');
