@@ -71,7 +71,7 @@ export function mergeTask(folder, taskId, title) {
     const merging = ok(main, 'rev-parse', '-q', '--verify', 'MERGE_HEAD');
     const conflict = merging && run(main, 'ls-files', '-u') !== '';
     if (merging) ok(main, 'merge', '--abort');
-    if (conflict) return { ok: false, conflict: true };
+    if (conflict) return { ok: false };
     throw e;
   }
   return { ok: true, commit: run(main, 'rev-parse', '--short', 'HEAD') };
