@@ -93,6 +93,7 @@ textarea{width:100%;min-height:84px;resize:vertical;background:var(--panel);bord
   </div>
 </header>
 <p id="banner" class="banner" hidden></p>
+<p id="conn" class="banner" role="alert" hidden></p>
 <main>
   <div>
     <h2>Team</h2>
@@ -115,18 +116,24 @@ textarea{width:100%;min-height:84px;resize:vertical;background:var(--panel);bord
 const ROLES={lead:'Lead',researcher:'Researcher',frontend:'Frontend dev',backend:'Backend dev',qa:'QA',reviewer:'Reviewer'};
 const COLS=[['backlog','Backlog'],['in_progress','In progress'],['review','Review'],['done','Done']];
 const $=id=>document.getElementById(id);
-let S=null, selected=null, stopped=false;
+let S=null, selected=null, stopped=false, down=false, flashT;
 
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 const time=t=>new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 const taskById=id=>S.tasks.find(t=>t.id===id);
+
+function flash(m){const c=$('conn');c.hidden=false;c.textContent=m;clearTimeout(flashT);flashT=setTimeout(()=>{if(!down)c.hidden=true},8000)}
 
 async function post(path,body){
   try{
     const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||r.status);
     return true;
-  }catch(e){$('sent').textContent='Failed: '+e.message;return false}
+  }catch(e){
+    $('sent').textContent='Failed: '+e.message;
+    flash('Request failed ('+e.message+'). '+(path==='/api/message'?'Your message was not sent.':'The change was not applied.'));
+    return false;
+  }
 }
 
 function card(t){
@@ -206,7 +213,7 @@ function render(){
 }
 
 function showStopped(){
-  stopped=true;
+  stopped=true;$('conn').hidden=true;
   const b=$('banner');b.hidden=false;b.className='banner stop';b.replaceChildren(
     'Team stopped. Run ',el('code','','agentherd'),' in this folder to start it again.');
   document.querySelectorAll('button,select,textarea').forEach(e=>e.disabled=true);
@@ -216,8 +223,10 @@ function showStopped(){
 
 function connect(){
   const es=new EventSource('/api/events');
-  es.onmessage=e=>{S=JSON.parse(e.data);render()};
+  es.onopen=()=>{down=false;$('conn').hidden=true};
+  es.onmessage=e=>{down=false;$('conn').hidden=true;S=JSON.parse(e.data);render()};
   es.onerror=()=>{
+    down=true;flash('Disconnected from the team. Reconnecting…');
     // the daemon exits on Stop, so a dead stream means the team is gone
     es.close();
     setTimeout(()=>fetch('/api/state').then(r=>r.ok&&connect()).catch(showStopped),1500);
