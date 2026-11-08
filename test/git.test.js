@@ -10,6 +10,18 @@ const ID = ['-c', 'user.name=t', '-c', 'user.email=t@t'];
 const git = (cwd, ...args) => execFileSync('git', [...ID, ...args], { cwd, encoding: 'utf8' }).trim();
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ah-'));
 
+test('prepareRepo on fresh state drops stale task branches', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const t1 = taskWorktree(f, 1);
+  fs.writeFileSync(path.join(t1, 'old.txt'), 'old');
+  commitAll(t1, 'old work');
+  fs.rmSync(path.join(f, '.agentherd'), { recursive: true });
+  prepareRepo(f);
+  assert.equal(git(f, 'branch', '--list', 'task-1'), '');
+  assert.equal(commitsAhead(taskWorktree(f, 1)), 0);
+});
+
 test('prepareRepo on plain folder', () => {
   const f = tmp();
   const main = prepareRepo(f);
