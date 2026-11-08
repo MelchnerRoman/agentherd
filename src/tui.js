@@ -34,7 +34,7 @@ export function renderView(state, { width, height, disconnected = false }) {
 
 const HELP = 'Type a wish for the team, or: /pause /resume /stop /tasks /task <id> /agents <n> /web /quit /help';
 
-function tasksText(state) {
+export function tasksText(state) {
   const out = [];
   for (const s of STATUSES) {
     const ts = state.tasks.filter((t) => t.status === s);
@@ -43,7 +43,7 @@ function tasksText(state) {
   return out.join('\n');
 }
 
-function taskText(state, id) {
+export function taskText(state, id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return `No task T${id}.`;
   const notes = t.notes.map((n) => `  - ${n}`);
