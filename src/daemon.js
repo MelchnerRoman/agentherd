@@ -32,10 +32,20 @@ const send = (res, code, obj) => {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
 };
+const MAX_BODY = 64 * 1024;
 const readJson = (req) => new Promise((resolve, reject) => {
   let b = '';
-  req.on('data', (c) => (b += c));
-  req.on('end', () => { try { resolve(b ? JSON.parse(b) : {}); } catch { reject(new Error('bad json')); } });
+  req.on('data', (c) => {
+    b += c;
+    if (b.length > MAX_BODY) { reject(Object.assign(new Error('body too large'), { status: 413 })); b = ''; }
+  });
+  req.on('end', () => {
+    try {
+      const v = b ? JSON.parse(b) : {};
+      if (v === null || typeof v !== 'object' || Array.isArray(v)) throw new Error();
+      resolve(v);
+    } catch { reject(Object.assign(new Error('bad json'), { status: 400 })); }
+  });
 });
 
 function shutdown() {
@@ -72,7 +82,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && (pathname === '/api/message' || pathname === '/api/control')) {
       let body;
-      try { body = await readJson(req); } catch { return send(res, 400, { error: 'bad json' }); }
+      try { body = await readJson(req); } catch (e) {
+        if (e.status === 413) { res.setHeader('Connection', 'close'); req.resume(); }
+        return send(res, e.status ?? 400, { error: e.message });
+      }
       if (pathname === '/api/message') {
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         if (!text) return send(res, 400, { error: 'empty text' });
