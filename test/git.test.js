@@ -157,6 +157,77 @@ test('removeTaskWorktree keepBranchAs renames the branch', () => {
   removeTaskWorktree(f, 2, { keepBranchAs: 'task-2' }); // never started: no dir, no branch
 });
 
+test('mergeTask makes a --no-ff merge commit titled "T<id>: <title>" and returns its sha', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const wt = taskWorktree(f, 3);
+  fs.writeFileSync(path.join(wt, 'x.txt'), 'x');
+  commitAll(wt, 'x');
+  const before = git(f, 'rev-parse', 'agentherd');
+  const r = mergeTask(f, 3, 'add x');
+  assert.equal(r.commit, git(f, 'rev-parse', '--short', 'agentherd'));
+  assert.equal(git(f, 'log', '-1', '--format=%s', 'agentherd'), 'T3: add x');
+  assert.equal(git(f, 'rev-parse', 'agentherd^1'), before);
+  assert.equal(git(f, 'rev-parse', 'agentherd^2'), git(f, 'rev-parse', 'task-3'));
+});
+
+test('conflicting merge leaves agentherd, _main and the task branch untouched; retry after resolving works', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const w0 = taskWorktree(f, 0);
+  fs.writeFileSync(path.join(w0, 'y.txt'), 'base\n');
+  commitAll(w0, 'y');
+  mergeTask(f, 0, 'y');
+  const w1 = taskWorktree(f, 1);
+  const w2 = taskWorktree(f, 2);
+  git(w1, 'merge', 'agentherd');
+  git(w2, 'merge', 'agentherd');
+  fs.writeFileSync(path.join(w1, 'y.txt'), 'one\n');
+  fs.writeFileSync(path.join(w2, 'y.txt'), 'two\n');
+  commitAll(w1, 'one');
+  commitAll(w2, 'two');
+  mergeTask(f, 1, 'one');
+  const head = git(f, 'rev-parse', 'agentherd');
+  const task2 = git(f, 'rev-parse', 'task-2');
+  assert.equal(mergeTask(f, 2, 'two').conflict, true);
+  assert.equal(git(f, 'rev-parse', 'agentherd'), head);
+  assert.equal(git(f, 'rev-parse', 'task-2'), task2);
+  const main = mainWorktreePath(f);
+  assert.equal(git(main, 'status', '--porcelain'), '');
+  assert.equal(fs.readFileSync(path.join(main, 'y.txt'), 'utf8'), 'one\n');
+  try { git(w2, 'merge', 'agentherd'); } catch { /* conflict expected */ }
+  fs.writeFileSync(path.join(w2, 'y.txt'), 'resolved\n');
+  commitAll(w2, 'resolve');
+  assert.equal(mergeTask(f, 2, 'two').ok, true);
+  assert.equal(fs.readFileSync(path.join(main, 'y.txt'), 'utf8'), 'resolved\n');
+});
+
+test('cleanup after merge keeps merged content, even if the worktree is dirty', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const wt = taskWorktree(f, 1);
+  fs.writeFileSync(path.join(wt, 'x.txt'), 'x');
+  commitAll(wt, 'x');
+  mergeTask(f, 1, 'x');
+  fs.writeFileSync(path.join(wt, 'junk.txt'), 'uncommitted');
+  removeTaskWorktree(f, 1);
+  assert.ok(!fs.existsSync(wt));
+  assert.equal(git(f, 'branch', '--list', 'task-1'), '');
+  assert.equal(git(f, 'show', 'agentherd:x.txt'), 'x');
+  assert.ok(!git(f, 'worktree', 'list').includes('T1'));
+});
+
+test('removeTaskWorktree keepBranchAs same name keeps the branch', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const wt = taskWorktree(f, 1);
+  fs.writeFileSync(path.join(wt, 'x.txt'), 'x');
+  commitAll(wt, 'x');
+  removeTaskWorktree(f, 1, { keepBranchAs: 'task-1' });
+  assert.ok(!fs.existsSync(wt));
+  assert.notEqual(git(f, 'branch', '--list', 'task-1'), '');
+});
+
 test('commitsAhead counts task commits over agentherd', () => {
   const f = tmp();
   prepareRepo(f);
