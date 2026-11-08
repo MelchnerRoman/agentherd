@@ -96,6 +96,18 @@ test('malformed, oversized and non-object bodies get 4xx; daemon survives', asyn
   assert.equal((await api(port, 'GET', '/api/state'))._status, 200);
 });
 
+test('GET / serves the dashboard and /api/state returns the payload', async () => {
+  const f = mk();
+  const { port } = await ensureDaemon(f);
+  const res = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  assert.equal(await res.text(), fs.readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'));
+  const s = await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();
+  assert.equal(s.goal, 'g');
+  assert.ok(Array.isArray(s.tasks) && s.counts);
+});
+
 test('daemon output goes to daemon.log and a failed start reports it', async () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-d-'));
   fs.mkdirSync(path.join(folder, '.agentherd'));
