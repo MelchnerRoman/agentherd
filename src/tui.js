@@ -46,7 +46,7 @@ function tasksText(state) {
 function taskText(state, id) {
   const t = state.tasks.find((x) => x.id === id);
   if (!t) return `No task T${id}.`;
-  const notes = [].concat(t.notes ?? []).map((n) => `  - ${typeof n === 'string' ? n : JSON.stringify(n)}`);
+  const notes = t.notes.map((n) => `  - ${n}`);
   return [`T${t.id} ${t.title}`, `status ${t.status} · role ${t.role} · attempts ${t.attempts} · review rounds ${t.reviewRounds}${t.commit ? ` · commit ${t.commit}` : ''}`,
     t.description ?? '', ...(notes.length ? ['notes:', ...notes] : [])].join('\n');
 }
