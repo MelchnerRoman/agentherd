@@ -63,14 +63,8 @@ const server = http.createServer(async (req, res) => {
     if (![`localhost:${port}`, `127.0.0.1:${port}`].includes(req.headers.host)) return send(res, 403, { error: 'forbidden host' });
     if (req.method === 'POST' && (req.headers['content-type'] ?? '').split(';')[0].trim() !== 'application/json') return send(res, 415, { error: 'expected application/json' });
     if (req.method === 'GET' && pathname === '/') {
-      try {
-        const html = fs.readFileSync(new URL('../web/index.html', import.meta.url));
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(html);
-      } catch {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        return res.end('dashboard not built');
-      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(fs.readFileSync(new URL('../web/index.html', import.meta.url)));
     }
     if (req.method === 'GET' && pathname === '/api/state') return send(res, 200, JSON.parse(payload()));
     if (req.method === 'GET' && pathname === '/api/events') {
