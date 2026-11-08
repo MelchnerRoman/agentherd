@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import * as gitModule from '../src/git.js';
 import { createState, addTask } from '../src/store.js';
 import { createOrchestrator } from '../src/orchestrator.js';
@@ -469,4 +470,34 @@ test('addNew skips titles matching a non-done task', async () => {
     { title: 'new', description: 'dup in batch', role: 'backend' },
   ]));
   assert.deepEqual(state.tasks.map((t) => t.title), ['Build Login', 'Write tests', 'Write tests', 'New']);
+});
+
+test('real runner + fake claude: usage-limit error pauses 15 min, stays paused until then, then resumes', async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-orch-'));
+  gitModule.prepareRepo(folder);
+  const state = createState(folder, { goal: 'g', existingCode: false });
+  state.status = 'running';
+  addTask(state, { title: 'qa work', description: 'do it', createdBy: 'test', role: 'qa' });
+  const clock = { t: 1_000_000 };
+  const o = createOrchestrator(state, { now: () => clock.t });
+  try {
+    process.env.AGENTHERD_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-claude');
+    process.env.FAKE_MODE = 'limit';
+    o.tick();
+    // Lead and QA both start; wait until every run has reported back
+    for (let i = 0; i < 400 && !(state.status === 'limited' && o.running.size === 0); i++) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(state.status === 'limited' && o.running.size === 0, `timed out: status=${state.status}, running=${o.running.size}`);
+    assert.equal(state.resumeAt, clock.t + 15 * 60_000);
+    assert.equal(state.tasks[0].status, 'backlog');
+    assert.equal(state.tasks[0].attempts, 0);
+    clock.t = state.resumeAt - 1;
+    o.tick();
+    assert.equal(state.status, 'limited');
+    assert.equal(o.running.size, 0);
+    delete process.env.FAKE_MODE; // limit lifted
+    clock.t = state.resumeAt;
+    o.tick();
+    assert.equal(state.status, 'running');
+    assert.ok(o.running.has('qa'));
+  } finally { o.stopAll(); delete process.env.FAKE_MODE; delete process.env.AGENTHERD_CLAUDE; }
 });
