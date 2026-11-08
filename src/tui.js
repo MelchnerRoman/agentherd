@@ -2,14 +2,13 @@ import readline from 'node:readline';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { ROLES } from './roles.js';
-import { counts } from './store.js';
 import { api, subscribe } from './client.js';
 
 const clip = (s, w) => (s.length > w ? s.slice(0, Math.max(0, w)) : s);
 const hhmm = (t) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 export function renderView(state, { width, height, disconnected = false }) {
-  const c = state.counts ?? counts(state);
+  const c = state.counts;
   const working = Object.values(state.agents).filter((a) => a.status === 'working').length;
   const status = state.status === 'limited'
     ? `paused – usage limit, resumes ${state.resumeAt ? hhmm(state.resumeAt) : '?'}`

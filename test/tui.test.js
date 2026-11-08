@@ -9,6 +9,7 @@ const mk = (over = {}) => ({
     { id: 1, title: 'Setup', status: 'backlog', role: 'backend' },
     { id: 2, title: 'Add login form', status: 'in_progress', role: 'frontend' },
   ],
+  counts: { backlog: 1, in_progress: 1, review: 0, done: 0, blocked: 0 },
   agents: Object.fromEntries(Object.keys(ROLES).map((r) => [r, { status: 'idle', taskId: null }])),
   activity: Array.from({ length: 30 }, (_, i) => ({ t: 0, agent: 'Lead', text: `did thing ${i} `.repeat(10) })),
   ...over,
