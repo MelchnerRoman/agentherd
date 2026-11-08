@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderView } from '../src/tui.js';
+import { renderView, tasksText, taskText } from '../src/tui.js';
+import { STATUSES } from '../src/store.js';
 import { ROLES } from '../src/roles.js';
 
 const mk = (over = {}) => ({
@@ -37,6 +38,21 @@ test('clips to width and height', () => {
   const lines = out.split('\n');
   assert.ok(lines.every((l) => l.length <= 40));
   assert.ok(lines.length <= 23);
+});
+
+test('/tasks lists every shared status, even empty ones', () => {
+  const out = tasksText(mk());
+  for (const s of STATUSES) assert.match(out, new RegExp(`^${s} \\(\\d+\\)$`, 'm'));
+  assert.match(out, /blocked \(0\)/);
+  assert.match(out, /in_progress \(1\)\n  T2 \[frontend\] Add login form/);
+});
+test('/task shows notes', () => {
+  const s = mk();
+  s.tasks[0] = { ...s.tasks[0], notes: ['first note', 'second'], attempts: 1, reviewRounds: 0 };
+  assert.match(taskText(s, 1), /notes:\n  - first note\n  - second/);
+  s.tasks[0].notes = [];
+  assert.doesNotMatch(taskText(s, 1), /notes:/);
+  assert.equal(taskText(s, 99), 'No task T99.');
 });
 
 test('header shows lost connection', () => {
