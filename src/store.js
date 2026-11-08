@@ -3,7 +3,7 @@ import path from 'node:path';
 import { ROLES as ROLE_DEFS } from './roles.js';
 
 const ROLES = Object.keys(ROLE_DEFS);
-const STATUSES = ['backlog', 'in_progress', 'review', 'done', 'blocked'];
+export const STATUSES =['backlog', 'in_progress', 'review', 'done', 'blocked'];
 const statePath = (folder) => path.join(folder, '.agentherd', 'state.json');
 
 export function loadState(folder) {
