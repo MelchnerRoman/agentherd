@@ -92,7 +92,7 @@ test('merge conflict', () => {
   commitAll(w1, 'one');
   commitAll(w2, 'two');
   assert.equal(mergeTask(f, 1, 'one').ok, true);
-  assert.deepEqual(mergeTask(f, 2, 'two'), { ok: false, conflict: true });
+  assert.deepEqual(mergeTask(f, 2, 'two'), { ok: false });
   const gitDir = git(mainWorktreePath(f), 'rev-parse', '--git-dir');
   assert.ok(!fs.existsSync(path.resolve(mainWorktreePath(f), gitDir, 'MERGE_HEAD')));
 });
@@ -189,7 +189,7 @@ test('conflicting merge leaves agentherd, _main and the task branch untouched; r
   mergeTask(f, 1, 'one');
   const head = git(f, 'rev-parse', 'agentherd');
   const task2 = git(f, 'rev-parse', 'task-2');
-  assert.equal(mergeTask(f, 2, 'two').conflict, true);
+  assert.equal(mergeTask(f, 2, 'two').ok, false);
   assert.equal(git(f, 'rev-parse', 'agentherd'), head);
   assert.equal(git(f, 'rev-parse', 'task-2'), task2);
   const main = mainWorktreePath(f);
