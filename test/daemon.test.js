@@ -104,6 +104,14 @@ test('daemon output goes to daemon.log and a failed start reports it', async () 
   assert.match(fs.readFileSync(path.join(folder, '.agentherd', 'daemon.log'), 'utf8'), /JSON/);
 });
 
+test('GET / serves the dashboard', async () => {
+  const { port } = await ensureDaemon(mk());
+  const res = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/html/);
+  assert.equal(await res.text(), fs.readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'));
+});
+
 test('subscribe reports connection status', async () => {
   const f = mk();
   const { port } = await ensureDaemon(f);
