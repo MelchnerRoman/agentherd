@@ -36,6 +36,10 @@ export function prepareRepo(folder) {
   run(folder, 'worktree', 'prune');
   if (!ok(folder, 'rev-parse', '--verify', '-q', 'refs/heads/agentherd')) run(folder, 'branch', 'agentherd', 'HEAD');
   const main = mainWorktreePath(folder);
+  if (!fs.existsSync(main)) {
+    // fresh state (task ids restart at 1): stale task-N branches from an earlier run must not leak in
+    for (const b of run(folder, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/task-*').split('\n').filter((b) => /^task-\d+$/.test(b))) ok(folder, 'branch', '-D', b);
+  }
   addWorktree(folder, main, 'agentherd');
   return main;
 }
