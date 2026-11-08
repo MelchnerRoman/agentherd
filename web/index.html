@@ -179,7 +179,7 @@ function render(){
 
   const ag=$('agents');ag.replaceChildren();
   for(const [id,name] of Object.entries(ROLES)){
-    const a=(s.agents||{})[id]||{status:'idle'},w=a.status==='working',t=w&&a.taskId!=null?taskById(a.taskId):null;
+    const a=s.agents[id]||{status:'idle'},w=a.status==='working',t=w&&a.taskId!=null?taskById(a.taskId):null;
     const c=el('div','agent'+(w?' working':''));
     c.append(el('b','',name),el('span','st',w?'Working':'Idle'));
     if(t)c.append(el('div','tt','#'+t.id+' '+t.title));
@@ -190,7 +190,7 @@ function render(){
   const bd=$('board');bd.replaceChildren();
   for(const [k,label] of COLS){
     const col=el('div','col'),h=el('h3','',label);
-    h.append(el('span','',String((s.counts||{})[k]||0)));
+    h.append(el('span','',String(s.counts[k])));
     col.append(h);
     const ts=s.tasks.filter(t=>t.status===k);
     if(!ts.length)col.append(el('p','empty','Nothing here'));
@@ -206,7 +206,7 @@ function render(){
   renderDetail();
 
   const f=$('feed');f.replaceChildren();
-  for(const a of (s.activity||[]).slice(-50).reverse()){
+  for(const a of s.activity.slice(-50).reverse()){
     const li=el('li');li.append(el('time','',time(a.t)),el('b','',a.agent),a.text);f.append(li);
   }
   if(!f.children.length)f.append(el('li','','No activity yet'));
