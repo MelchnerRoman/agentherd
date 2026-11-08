@@ -83,7 +83,7 @@ const server = http.createServer(async (req, res) => {
       if (pathname === '/api/message') {
         const text = typeof body.text === 'string' ? body.text.trim() : '';
         if (!text) return send(res, 400, { error: 'empty text' });
-        state.messages.push({ id: state.messages.length + 1, text, t: Date.now(), read: false });
+        state.messages.push({ text, t: Date.now(), read: false });
         state.leadIdle = false;
         log(state, 'Product owner', text);
         saveState(state);
