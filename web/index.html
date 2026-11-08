@@ -232,10 +232,10 @@ function connect(){
   };
 }
 
-// the daemon exits on Stop, so keep probing with backoff (~30s total) before declaring the team gone
+// the daemon exits on Stop, so keep probing with backoff (~13s total) before declaring the team gone
 function retry(n){
   setTimeout(()=>fetch('/api/state').then(r=>{if(!r.ok)throw 0;connect()})
-    .catch(()=>n<6?retry(n+1):showStopped()),Math.min(1500*2**n,8000));
+    .catch(()=>n<4?retry(n+1):showStopped()),Math.min(1500*2**n,3000));
 }
 
 for(let i=1;i<=6;i++)$('max').append(new Option(i,i));
