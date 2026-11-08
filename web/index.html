@@ -227,10 +227,15 @@ function connect(){
   es.onmessage=e=>{down=false;$('conn').hidden=true;S=JSON.parse(e.data);render()};
   es.onerror=()=>{
     down=true;flash('Disconnected from the team. Reconnecting…');
-    // the daemon exits on Stop, so a dead stream means the team is gone
     es.close();
-    setTimeout(()=>fetch('/api/state').then(r=>r.ok&&connect()).catch(showStopped),1500);
+    retry(0);
   };
+}
+
+// the daemon exits on Stop, so keep probing with backoff (~30s total) before declaring the team gone
+function retry(n){
+  setTimeout(()=>fetch('/api/state').then(r=>{if(!r.ok)throw 0;connect()})
+    .catch(()=>n<6?retry(n+1):showStopped()),Math.min(1500*2**n,8000));
 }
 
 for(let i=1;i<=6;i++)$('max').append(new Option(i,i));
