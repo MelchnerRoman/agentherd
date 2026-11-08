@@ -479,13 +479,14 @@ test('real runner + fake claude: usage-limit error pauses 15 min, stays paused u
   state.status = 'running';
   addTask(state, { title: 'qa work', description: 'do it', createdBy: 'test', role: 'qa' });
   const clock = { t: 1_000_000 };
-  process.env.AGENTHERD_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-claude');
-  process.env.FAKE_MODE = 'limit';
   const o = createOrchestrator(state, { now: () => clock.t });
   try {
+    process.env.AGENTHERD_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-claude');
+    process.env.FAKE_MODE = 'limit';
     o.tick();
-    for (let i = 0; i < 200 && state.status !== 'limited'; i++) await new Promise((r) => setTimeout(r, 25));
-    assert.equal(state.status, 'limited');
+    // Lead and QA both start; wait until every run has reported back
+    for (let i = 0; i < 400 && !(state.status === 'limited' && o.running.size === 0); i++) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(state.status === 'limited' && o.running.size === 0, `timed out: status=${state.status}, running=${o.running.size}`);
     assert.equal(state.resumeAt, clock.t + 15 * 60_000);
     assert.equal(state.tasks[0].status, 'backlog');
     assert.equal(state.tasks[0].attempts, 0);
@@ -498,5 +499,5 @@ test('real runner + fake claude: usage-limit error pauses 15 min, stays paused u
     o.tick();
     assert.equal(state.status, 'running');
     assert.ok(o.running.has('qa'));
-  } finally { o.stopAll(); delete process.env.FAKE_MODE; }
+  } finally { o.stopAll(); delete process.env.FAKE_MODE; delete process.env.AGENTHERD_CLAUDE; }
 });
