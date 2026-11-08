@@ -65,4 +65,4 @@ git worktree prune
 git branch -D agentherd
 ```
 
-Leftover task branches (`task-1`, `task-2`, ...) are not removed by `agentherd stop`, but you don't need to delete them by hand: a run that starts without a `.agentherd/` folder deletes stale `task-<number>` branches itself, so task numbers restarting at 1 don't pick up old work.
+Leftover task branches (`task-1`, `task-2`, ...) are not removed by `agentherd stop`, but you don't need to delete them by hand: a run whose `.agentherd/worktrees/_main` is missing (as after the reset above) deletes stale `task-<number>` branches itself, so task numbers restarting at 1 don't pick up old work.
