@@ -237,3 +237,18 @@ test('commitsAhead counts task commits over agentherd', () => {
   commitAll(wt, 'x');
   assert.equal(commitsAhead(wt), 1);
 });
+
+test('after reset the next run starts task-1 from a fresh branch, not the stale one', () => {
+  const f = tmp();
+  prepareRepo(f);
+  const t1 = taskWorktree(f, 1);
+  fs.writeFileSync(path.join(t1, 'stale.txt'), 'stale');
+  commitAll(t1, 'stale work');
+  const staleSha = git(f, 'rev-parse', 'task-1');
+  fs.rmSync(path.join(f, '.agentherd'), { recursive: true }); // reset
+  prepareRepo(f);
+  const fresh = taskWorktree(f, 1);
+  assert.notEqual(git(f, 'rev-parse', 'task-1'), staleSha);
+  assert.equal(git(f, 'rev-parse', 'task-1'), git(f, 'rev-parse', 'agentherd'));
+  assert.equal(fs.existsSync(path.join(fresh, 'stale.txt')), false);
+});
