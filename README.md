@@ -37,7 +37,7 @@ Type a sentence at the prompt to send a wish to the team ("add dark mode"). Slas
 | `/quit` | leave the view, the team keeps working |
 | `/help` | list the commands |
 
-From the shell: `agentherd stop` stops the team, `agentherd web` opens the dashboard (port 4321, or the next free one up to 4340), `agentherd help` shows usage.
+From the shell: `agentherd stop` stops the team, `agentherd web` opens the dashboard (port 4321, or the next free one up to 4340; it only answers requests addressed to `localhost` or `127.0.0.1`), `agentherd help` shows usage. If the dashboard loses its connection it retries for about 13 seconds before showing "Team stopped", and reloads by itself when the team comes back.
 
 ## Getting the work
 
@@ -63,7 +63,6 @@ agentherd stop
 rm -rf .agentherd
 git worktree prune
 git branch -D agentherd
-git branch --list 'task-*'   # then delete each listed branch: git branch -D task-1 task-2 ...
 ```
 
-The task branches (`task-1`, `task-2`, ...) are not removed by `agentherd stop`. Delete them on reset, otherwise a new run reuses the old branch for the same task number.
+Leftover task branches (`task-1`, `task-2`, ...) are not removed by `agentherd stop`, but you don't need to delete them by hand: a run that starts without a `.agentherd/` folder deletes stale `task-<number>` branches itself, so task numbers restarting at 1 don't pick up old work.
