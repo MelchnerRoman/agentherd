@@ -66,7 +66,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(fs.readFileSync(new URL('../web/index.html', import.meta.url)));
     }
-    if (req.method === 'GET' && pathname === '/api/state') return send(res, 200, JSON.parse(payload()));
+    if (req.method === 'GET' && pathname === '/api/state') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(payload());
+    }
     if (req.method === 'GET' && pathname === '/api/events') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write(`data: ${payload()}\n\n`);
