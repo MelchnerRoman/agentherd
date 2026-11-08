@@ -2,6 +2,7 @@ import readline from 'node:readline';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { ROLES } from './roles.js';
+import { STATUSES } from './store.js';
 import { api, subscribe } from './client.js';
 
 const clip = (s, w) => (s.length > w ? s.slice(0, Math.max(0, w)) : s);
@@ -35,7 +36,7 @@ const HELP = 'Type a wish for the team, or: /pause /resume /stop /tasks /task <i
 
 function tasksText(state) {
   const out = [];
-  for (const s of ['backlog', 'in_progress', 'review', 'done', 'blocked']) {
+  for (const s of STATUSES) {
     const ts = state.tasks.filter((t) => t.status === s);
     out.push(`${s} (${ts.length})`, ...ts.map((t) => `  T${t.id} [${t.role}] ${t.title}`));
   }
