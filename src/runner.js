@@ -2,11 +2,7 @@ import { spawn } from 'node:child_process';
 import { SCHEMAS } from './roles.js';
 
 const READ_ONLY = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)'];
-const TOOLS = {
-  lead: READ_ONLY,
-  reviewer: READ_ONLY,
-  worker: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)', 'Bash(ls *)', 'Bash(git status*)', 'Bash(git diff*)', 'Bash(git log*)'],
-};
+const WORKER_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)', 'Bash(ls *)', 'Bash(git status*)', 'Bash(git diff*)', 'Bash(git log*)'];
 
 export function buildArgs(role, prompt) {
   return [
@@ -16,7 +12,7 @@ export function buildArgs(role, prompt) {
     '--json-schema', JSON.stringify(SCHEMAS[role.kind]),
     '--append-system-prompt', role.prompt,
     '--permission-mode', 'dontAsk',
-    '--allowedTools', ...TOOLS[role.kind],
+    '--allowedTools', ...(role.kind === 'worker' ? WORKER_TOOLS : READ_ONLY),
   ];
 }
 
