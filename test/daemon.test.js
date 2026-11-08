@@ -84,6 +84,18 @@ test('rejects foreign Host headers and non-JSON posts', async () => {
   assert.equal(await raw(port, { method: 'POST', path: '/api/message', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: '{"text":"hi"}' }), 200);
 });
 
+test('malformed, oversized and non-object bodies get 4xx; daemon survives', async () => {
+  const f = mk();
+  const { port } = await ensureDaemon(f);
+  const h = { 'Content-Type': 'application/json' };
+  for (const path of ['/api/message', '/api/control']) {
+    for (const body of ['{oops', 'null', '[1]', '"x"']) assert.equal(await raw(port, { method: 'POST', path, headers: h, body }), 400, path + body);
+  }
+  assert.equal(await raw(port, { method: 'POST', path: '/api/control', headers: h, body: '{"action":"explode"}' }), 400);
+  assert.equal(await raw(port, { method: 'POST', path: '/api/message', headers: h, body: JSON.stringify({ text: 'x'.repeat(70 * 1024) }) }), 413);
+  assert.equal((await api(port, 'GET', '/api/state'))._status, 200);
+});
+
 test('daemon output goes to daemon.log and a failed start reports it', async () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-d-'));
   fs.mkdirSync(path.join(folder, '.agentherd'));
