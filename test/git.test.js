@@ -16,9 +16,13 @@ test('prepareRepo on fresh state drops stale task branches', () => {
   const t1 = taskWorktree(f, 1);
   fs.writeFileSync(path.join(t1, 'old.txt'), 'old');
   commitAll(t1, 'old work');
+  git(f, 'branch', 'task-1-conflict-1', 'task-1');
+  git(f, 'branch', 'task-foo', 'task-1');
   fs.rmSync(path.join(f, '.agentherd'), { recursive: true });
   prepareRepo(f);
   assert.equal(git(f, 'branch', '--list', 'task-1'), '');
+  assert.notEqual(git(f, 'branch', '--list', 'task-1-conflict-1'), '');
+  assert.notEqual(git(f, 'branch', '--list', 'task-foo'), '');
   assert.equal(commitsAhead(taskWorktree(f, 1)), 0);
 });
 
