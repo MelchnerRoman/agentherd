@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createState, saveState } from '../src/store.js';
-import { readDaemon, ensureDaemon, api, subscribe } from '../src/client.js';
+import { readDaemon, ensureDaemon, api, subscribe, stopOtherTeams } from '../src/client.js';
 
 process.env.AGENTHERD_CLAUDE = new URL('./fake-claude', import.meta.url).pathname;
 const folders = [];
@@ -135,4 +135,15 @@ test('subscribe reports connection status', async () => {
   await new Promise((r) => setTimeout(r, 100));
   un();
   assert.deepEqual(down, ['disconnected']);
+});
+
+test('stopOtherTeams stops teams in other folders only', async () => {
+  const a = mk(), b = mk();
+  const ports = [(await ensureDaemon(a)).port, (await ensureDaemon(b)).port]; // never touch the user's real teams
+  const pidA = readDaemon(a).pid;
+  const stopped = await stopOtherTeams(b, ports);
+  assert.ok(stopped.includes(a));
+  assert.ok(!stopped.includes(b));
+  assert.ok(await gone(pidA));
+  assert.ok(readDaemon(b));
 });

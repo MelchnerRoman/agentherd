@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { loadState, createState } from '../src/store.js';
-import { ensureDaemon, readDaemon, api } from '../src/client.js';
+import { ensureDaemon, readDaemon, api, stopOtherTeams } from '../src/client.js';
 import { startTui, openUrl } from '../src/tui.js';
 
 const folder = process.cwd();
@@ -16,6 +16,10 @@ Usage:
   agentherd help    show this text`;
 
 const [cmd] = process.argv.slice(2);
+const startTeam = async () => {
+  for (const f of await stopOtherTeams(folder)) console.log(`Stopped the team in ${f} (only one team runs at a time).`);
+  return ensureDaemon(folder);
+};
 
 try {
 
@@ -29,7 +33,7 @@ try {
       catch { fs.rmSync(path.join(folder, '.agentherd', 'daemon.json'), { force: true }); console.log('not running'); }
     }
   } else if (cmd === 'web') {
-    const { port } = await ensureDaemon(folder);
+    const { port } = await startTeam();
     openUrl(`http://localhost:${port}`);
   } else if (cmd) {
     console.error(`Unknown command: ${cmd}\n\n${USAGE}`);
@@ -49,7 +53,7 @@ try {
       rl.close();
       createState(folder, { goal, existingCode });
     }
-    const { port } = await ensureDaemon(folder);
+    const { port } = await startTeam();
     startTui(port, folder);
   }
 } catch (e) {

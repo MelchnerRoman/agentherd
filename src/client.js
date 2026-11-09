@@ -37,6 +37,20 @@ export async function ensureDaemon(folder) {
   throw new Error(`daemon did not start${tail ? ` (${logFile}):\n${tail}` : ''}`);
 }
 
+// Only one team runs at a time (they share one subscription): stop teams in other folders.
+// Scans the daemon's port range (daemon.js: 4321..4340).
+const PORTS = Array.from({ length: 20 }, (_, i) => 4321 + i);
+export async function stopOtherTeams(folder, ports = PORTS) {
+  const stopped = [];
+  for (const port of ports) {
+    const s = await api(port, 'GET', '/api/state').catch(() => null);
+    if (!s?.folder || path.resolve(s.folder) === path.resolve(folder)) continue;
+    await api(port, 'POST', '/api/control', { action: 'stop' }).catch(() => {});
+    stopped.push(s.folder);
+  }
+  return stopped;
+}
+
 export function api(port, method, urlPath, body) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
@@ -50,6 +64,7 @@ export function api(port, method, urlPath, body) {
       });
     });
     req.on('error', reject);
+    req.setTimeout(2000, () => req.destroy(new Error('timeout')));
     req.end(data);
   });
 }
