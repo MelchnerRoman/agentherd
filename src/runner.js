@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
 import { SCHEMAS } from './roles.js';
 
-const READ_ONLY = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)'];
-const WORKER_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)', 'Bash(ls *)', 'Bash(git status*)', 'Bash(git diff*)', 'Bash(git log*)'];
+// Agents pipe output through cat/head/tail/grep; in dontAsk mode one unlisted part denies the whole command.
+const READ_ONLY = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)',
+  'Bash(ls *)', 'Bash(cat *)', 'Bash(head *)', 'Bash(tail *)', 'Bash(grep *)', 'Bash(wc *)', 'Bash(sed -n *)'];
+const WORKER_TOOLS = [...READ_ONLY, 'Edit', 'Write', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)'];
 
 export function buildArgs(role, prompt) {
   return [

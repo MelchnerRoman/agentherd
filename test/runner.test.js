@@ -19,11 +19,13 @@ test('buildArgs includes dontAsk and schema', () => {
 
 test('buildArgs: lead and reviewer get read-only tools, workers the full list', () => {
   const tools = (role) => buildArgs(role, 'x').slice(buildArgs(role, 'x').indexOf('--allowedTools') + 1);
-  const readOnly = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)'];
-  assert.deepEqual(tools(ROLES.lead), readOnly);
-  assert.deepEqual(tools(ROLES.reviewer), readOnly);
-  assert.ok(tools(ROLES.frontend).includes('Edit'));
-  assert.ok(tools(ROLES.frontend).includes('Bash(npm *)'));
+  for (const r of [ROLES.lead, ROLES.reviewer]) {
+    assert.ok(!tools(r).some((t) => /Edit|Write|npm|node/.test(t)));
+    assert.ok(tools(r).includes('Bash(git diff*)'));
+  }
+  // qa pipes test output through tail/grep (e.g. `npm test 2>&1 | tail -15`); every part must be allowed
+  for (const t of ['Edit', 'Bash(npm *)', 'Bash(node *)', 'Bash(tail *)', 'Bash(grep *)', 'Bash(cat *)', 'Bash(head *)'])
+    assert.ok(tools(ROLES.qa).includes(t), t);
 });
 
 test('parseLine tool_use', () => {
