@@ -4,7 +4,7 @@ import { SCHEMAS } from './roles.js';
 // Agents pipe output through cat/head/tail/grep; in dontAsk mode one unlisted part denies the whole command.
 const READ_ONLY = ['Read', 'Glob', 'Grep', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git status*)',
   'Bash(ls *)', 'Bash(cat *)', 'Bash(head *)', 'Bash(tail *)', 'Bash(grep *)', 'Bash(wc *)', 'Bash(sed -n *)'];
-const WORKER_TOOLS = [...READ_ONLY, 'Edit', 'Write', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)'];
+const WORKER_TOOLS = [...READ_ONLY, 'Edit', 'Write', 'Bash(npm *)', 'Bash(npx *)', 'Bash(node *)', 'Bash(cargo *)'];
 
 export function buildArgs(role, prompt) {
   return [

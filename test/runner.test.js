@@ -24,7 +24,7 @@ test('buildArgs: lead and reviewer get read-only tools, workers the full list', 
     assert.ok(tools(r).includes('Bash(git diff*)'));
   }
   // qa pipes test output through tail/grep (e.g. `npm test 2>&1 | tail -15`); every part must be allowed
-  for (const t of ['Edit', 'Bash(npm *)', 'Bash(node *)', 'Bash(tail *)', 'Bash(grep *)', 'Bash(cat *)', 'Bash(head *)'])
+  for (const t of ['Edit', 'Bash(npm *)', 'Bash(node *)', 'Bash(cargo *)', 'Bash(tail *)', 'Bash(grep *)', 'Bash(cat *)', 'Bash(head *)'])
     assert.ok(tools(ROLES.qa).includes(t), t);
 });
 
