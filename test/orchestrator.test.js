@@ -15,7 +15,7 @@ const failed = { ok: true, output: { status: 'failed', summary: 'nope', newTasks
 const review = (approved, notes = 'fix it') => ({ ok: true, output: { approved, notes, newTasks: [] } });
 const plan = (newTasks = [], dropTaskIds = []) => ({ ok: true, output: { summary: 'plan', newTasks, dropTaskIds } });
 
-function setup({ tasks = [], maxAgents = 6, status = 'running', git } = {}) {
+function setup({ tasks = [], maxAgents = 6, status = 'running', git, providers } = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-orch-'));
   gitModule.prepareRepo(folder);
   const state = createState(folder, { goal: 'build a todo app', existingCode: false });
@@ -23,10 +23,10 @@ function setup({ tasks = [], maxAgents = 6, status = 'running', git } = {}) {
   state.status = status;
   for (const t of tasks) addTask(state, { title: `${t.role} work`, description: 'do it', createdBy: 'test', ...t });
   const calls = [];
-  const run = ({ role, prompt, cwd }) => {
+  const run = ({ role, prompt, cwd, provider }) => {
     let resolve;
     const promise = new Promise((r) => { resolve = r; });
-    const c = { role: role.id, prompt, cwd, killed: false };
+    const c = { role: role.id, prompt, cwd, provider, killed: false };
     // a worker "doing the work" leaves a change behind unless told not to
     c.resolve = async (res, { change = true } = {}) => {
       if (change && role.kind === 'worker' && fs.existsSync(cwd)) fs.writeFileSync(path.join(cwd, `work-${calls.indexOf(c)}.txt`), 'w\n');
@@ -38,7 +38,7 @@ function setup({ tasks = [], maxAgents = 6, status = 'running', git } = {}) {
   };
   const clock = { t: 1_000_000 };
   let changes = 0;
-  const o = createOrchestrator(state, { run, now: () => clock.t, onChange: () => changes++, git });
+  const o = createOrchestrator(state, { run, now: () => clock.t, onChange: () => changes++, git, ...(providers ? { providers } : {}) });
   const last = (role) => calls.filter((c) => c.role === role).at(-1);
   const count = (role) => calls.filter((c) => c.role === role).length;
   return { folder, state, o, calls, clock, last, count, changes: () => changes };
@@ -201,6 +201,24 @@ test('limit → task restored, status limited, attempts unchanged; tick after re
   assert.equal(count('qa'), 2);
 });
 
+test('limit uses the provider reset time when given', async () => {
+  const { state, o, last, clock } = setup({ tasks: [{ role: 'qa' }] });
+  o.tick();
+  await last('qa').resolve({ ok: false, limit: true, resumeAt: clock.t + 60_000 });
+  assert.equal(state.status, 'limited');
+  assert.equal(state.resumeAt, clock.t + 60_000);
+  assert.equal(state.tasks[0].status, 'backlog');
+});
+
+test('runs use the active provider profile', () => {
+  const providers = { claude: { label: 'Claude' }, glm: { label: 'GLM', env: {}, models: {} } };
+  const { state, o, last } = setup({ tasks: [{ role: 'backend' }], providers });
+  state.provider = 'glm';
+  o.tick();
+  assert.equal(last('backend').provider, providers.glm);
+  assert.equal(last('lead').provider, providers.glm);
+});
+
 test('reviewer limit → task stays in review, not reviewing', async () => {
   const { state, o, last } = setup({ tasks: [{ role: 'qa' }] });
   o.tick();
@@ -306,14 +324,35 @@ test('lead result: adds tasks, drops blocked ones, marks messages read', async (
   assert.equal(state.messages[0].read, true);
 });
 
-test('newTasks from a worker are added with createdBy role', async () => {
-  const { state, o, last } = setup({ tasks: [{ role: 'qa' }] });
+test('newTasks from a worker become proposals that only the Lead turns into tasks', async () => {
+  const { state, o, last } = setup({ tasks: [{ role: 'qa' }, { role: 'qa', title: 'second' }, { role: 'qa', title: 'third' }] });
   o.tick();
-  state.status = 'paused';
+  await last('lead').resolve(plan());
   await last('qa').resolve(done({ newTasks: [{ title: 'bug', description: 'b', role: 'backend' }] }));
-  const t = state.tasks.find((x) => x.title === 'bug');
-  assert.equal(t.createdBy, 'qa');
-  assert.equal(t.role, 'backend');
+  assert.ok(!state.tasks.some((x) => x.title === 'bug'));
+  assert.equal(state.proposals.length, 1);
+  await last('reviewer').resolve(review(true));
+  assert.match(last('lead').prompt, /\[backend\] bug: b \(from qa\)/);
+  await last('lead').resolve(plan([{ title: 'bug', description: 'b', role: 'backend' }]));
+  assert.equal(state.proposals.length, 0);
+  assert.equal(state.tasks.find((x) => x.title === 'bug').createdBy, 'lead');
+});
+
+test('an owner message wakes the Lead past the backlog and agent limits', async () => {
+  const { state, o, last, count } = setup({ tasks: [{ role: 'frontend' }, { role: 'backend' }, { role: 'qa' }], maxAgents: 3 });
+  o.tick();
+  assert.equal(count('lead'), 0);
+  state.messages.push({ text: 'only the important stuff', t: 1, read: false });
+  o.tick();
+  assert.equal(count('lead'), 1);
+  assert.match(last('lead').prompt, /only the important stuff/);
+  o.tick();
+  assert.equal(count('lead'), 1); // already planning
+  state.messages.push({ text: 'and make it blue', t: 2, read: false });
+  await last('lead').resolve(plan());
+  assert.equal(count('lead'), 2); // message sent mid-run is not lost
+  assert.match(last('lead').prompt, /make it blue/);
+  assert.doesNotMatch(last('lead').prompt, /important stuff/);
 });
 
 test('reviewer failing twice → blocked', async () => {

@@ -90,6 +90,7 @@ textarea{width:100%;min-height:84px;resize:vertical;background:var(--panel);bord
     <button id="resume" class="primary">Resume</button>
     <button id="stop">Stop</button>
     <label>Agents at once <select id="max"></select></label>
+    <label>Provider <select id="provider" title="Claude Code provider profile"></select></label>
   </div>
 </header>
 <p id="banner" class="banner" hidden></p>
@@ -116,7 +117,7 @@ textarea{width:100%;min-height:84px;resize:vertical;background:var(--panel);bord
 const ROLES={lead:'Lead',researcher:'Researcher',frontend:'Frontend dev',backend:'Backend dev',qa:'QA',reviewer:'Reviewer'};
 const COLS=[['backlog','Backlog'],['in_progress','In progress'],['review','Review'],['done','Done']];
 const $=id=>document.getElementById(id);
-let S=null, selected=null, stopped=false, down=false, flashT;
+let S=null, selected=null, stopped=false, down=false, flashT, providerSig='';
 
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 const time=t=>new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -173,6 +174,10 @@ function render(){
   $('pause').disabled=s.status!=='running';
   $('resume').disabled=s.status==='running'||s.status==='stopped';
   if(document.activeElement!==$('max'))$('max').value=s.maxAgents;
+  const pv=$('provider'),plist=Array.isArray(s.providers)?s.providers:[];
+  const psig=plist.map(p=>p.name+'='+p.label).join('|');
+  if(psig!==providerSig){providerSig=psig;pv.replaceChildren();for(const p of plist)pv.append(new Option(p.label,p.name));}
+  if(document.activeElement!==pv)pv.value=s.provider||'claude';
   const bn=$('banner');
   bn.hidden=s.status!=='limited';
   if(!bn.hidden)bn.textContent='Usage limit reached. The team resumes'+(s.resumeAt?' at '+new Date(s.resumeAt).toLocaleTimeString():' soon')+'.';
@@ -243,6 +248,7 @@ $('pause').onclick=()=>post('/api/control',{action:'pause'});
 $('resume').onclick=()=>post('/api/control',{action:'resume'});
 $('stop').onclick=()=>{if(confirm('Stop the team? Running agents are cancelled.'))post('/api/control',{action:'stop'})};
 $('max').onchange=e=>post('/api/control',{maxAgents:Number(e.target.value)});
+$('provider').onchange=e=>post('/api/control',{provider:e.target.value});
 async function send(){
   const text=$('msg').value.trim();if(!text)return;
   if(await post('/api/message',{text})){$('msg').value='';$('sent').textContent='Sent to the Lead'}

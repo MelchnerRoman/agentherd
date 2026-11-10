@@ -28,8 +28,10 @@ const firstEvent = (port) => new Promise((resolve, reject) => {
 
 // Fields web/index.html render() reads.
 function checkShape(s) {
-  for (const k of ['goal', 'folder', 'status', 'maxAgents']) assert.ok(k in s, k);
+  for (const k of ['goal', 'folder', 'status', 'maxAgents', 'provider', 'providers']) assert.ok(k in s, k);
   assert.equal(typeof s.folder, 'string');
+  assert.equal(typeof s.provider, 'string');
+  assert.ok(Array.isArray(s.providers) && s.providers.some((p) => p.name === s.provider));
   assert.ok(['running', 'paused', 'limited', 'stopped'].includes(s.status));
   assert.ok(Array.isArray(s.tasks));
   assert.ok(Array.isArray(s.activity));

@@ -24,7 +24,7 @@ export function saveState(state) {
 
 export function createState(folder, { goal, existingCode }) {
   const state = {
-    folder, goal, existingCode,
+    folder, goal, existingCode, provider: 'claude',
     status: 'running', resumeAt: null, maxAgents: 6, nextId: 1,
     tasks: [], messages: [], activity: [],
     agents: Object.fromEntries(ROLES.map((r) => [r, { status: 'idle', taskId: null }])),

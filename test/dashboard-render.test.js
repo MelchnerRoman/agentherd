@@ -22,6 +22,7 @@ test('render() shows counts, cards, blocked list and task notes', () => {
   const t = (id, status, extra = {}) => ({ id, title: `t${id}`, role: 'qa', status, attempts: 1, reviewRounds: 0, notes: [], ...extra });
   es.onmessage({ data: JSON.stringify({
     goal: 'g', folder: '/f', status: 'running', maxAgents: 3, agents: {}, activity: [],
+    provider: 'glm', providers: [{ name: 'claude', label: 'Claude Code default' }, { name: 'glm', label: 'Z.ai GLM' }],
     counts: { backlog: 1, in_progress: 0, review: 0, done: 1, blocked: 1 },
     tasks: [t(1, 'backlog'), t(2, 'done'), t(3, 'blocked', { notes: ['why stuck'] })],
   }) });
@@ -36,4 +37,6 @@ test('render() shows counts, cards, blocked list and task notes', () => {
 
   els.blocked.children[1].children[0].onclick(); // select blocked card
   assert.match(text(els.detail), /Notes.*why stuck/);
+  assert.equal(els.provider.value, 'glm');
+  assert.equal(els.provider.children.length, 2);
 });

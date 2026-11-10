@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderView, tasksText, taskText } from '../src/tui.js';
+import { renderView, tasksText, taskText, providersText } from '../src/tui.js';
 import { STATUSES } from '../src/store.js';
 import { ROLES } from '../src/roles.js';
 
@@ -57,4 +57,20 @@ test('/task shows notes', () => {
 
 test('header shows lost connection', () => {
   assert.match(renderView(mk(), { width: 80, height: 30, disconnected: true }).split('\n')[0], /lost connection to the team, reconnecting…/);
+});
+
+test('header shows the active provider', () => {
+  const h = renderView(mk({ provider: 'glm', providerLabel: 'Z.ai GLM' }), { width: 100, height: 30 }).split('\n')[0];
+  assert.match(h, /provider glm/);
+});
+
+test('/provider lists profiles and marks the active one', () => {
+  const out = providersText(mk({
+    provider: 'glm',
+    providers: [{ name: 'claude', label: 'Claude Code default' }, { name: 'glm', label: 'Z.ai GLM' }],
+  }));
+  assert.match(out, /Active provider: glm – Z\.ai GLM/);
+  assert.match(out, /\* glm – Z\.ai GLM/);
+  assert.match(out, /claude – Claude Code default/);
+  assert.match(out, /providers\.json/);
 });

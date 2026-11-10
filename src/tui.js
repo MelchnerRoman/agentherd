@@ -14,8 +14,9 @@ export function renderView(state, { width, height, disconnected = false }) {
   const status = state.status === 'limited'
     ? `paused – usage limit, resumes ${state.resumeAt ? hhmm(state.resumeAt) : '?'}`
     : state.status;
+  const provider = state.provider || state.providerLabel;
   const lines = [
-    `agentHerd · ${path.basename(state.folder)} · ${disconnected ? 'lost connection to the team, reconnecting…' : status} · agents ${working}/${state.maxAgents}`,
+    `agentHerd · ${path.basename(state.folder)} · ${disconnected ? 'lost connection to the team, reconnecting…' : status} · agents ${working}/${state.maxAgents}${provider ? ` · provider ${provider}` : ''}`,
     `Backlog ${c.backlog} · In progress ${c.in_progress} · Review ${c.review} · Done ${c.done} · Blocked ${c.blocked}`,
   ];
   const nameW = Math.max(...Object.values(ROLES).map((r) => r.name.length));
@@ -32,7 +33,7 @@ export function renderView(state, { width, height, disconnected = false }) {
   return lines.map((l) => clip(l, width)).join('\n');
 }
 
-const HELP = 'Type a wish for the team, or: /pause /resume /stop /tasks /task <id> /agents <n> /web /quit /help';
+const HELP = 'Type a wish for the team, or: /pause /resume /stop /tasks /task <id> /agents <n> /provider [name] /web /quit /help';
 
 export function tasksText(state) {
   const out = [];
@@ -49,6 +50,20 @@ export function taskText(state, id) {
   const notes = t.notes.map((n) => `  - ${n}`);
   return [`T${t.id} ${t.title}`, `status ${t.status} · role ${t.role} · attempts ${t.attempts} · review rounds ${t.reviewRounds}${t.commit ? ` · commit ${t.commit}` : ''}`,
     t.description ?? '', ...(notes.length ? ['notes:', ...notes] : [])].join('\n');
+}
+
+export function providersText(state) {
+  const list = state.providers?.length
+    ? state.providers
+    : [{ name: state.provider || 'claude', label: state.providerLabel || state.provider || 'claude' }];
+  const active = list.find((p) => p.name === state.provider) ?? list[0];
+  return [
+    `Active provider: ${active.name} – ${active.label}`,
+    'Profiles:',
+    ...list.map((p) => `  ${p.name === active.name ? '*' : ' '} ${p.name} – ${p.label}`),
+    '',
+    'Use /provider <name> to switch. Profiles live in .agentherd/providers.json; restart agentherd after editing it.',
+  ].join('\n');
 }
 
 export function openUrl(url) {
@@ -102,6 +117,9 @@ export function startTui(port, folder) {
         return e ? say(e) : detach('Team stopped.');
       }
       case '/agents': return say((await post('/api/control', { maxAgents: Number(arg) })) ?? `Max agents set to ${arg}.`);
+      case '/provider':
+        if (!arg) return show(state ? providersText(state) : 'No state yet.');
+        return say((await post('/api/control', { provider: arg })) ?? `Provider set to ${arg}.`);
       case '/tasks': return show(state ? tasksText(state) : 'No state yet.');
       case '/task': if (!arg) return say('Usage: /task <id>'); return show(state ? taskText(state, Number(String(arg ?? '').replace(/^T/i, ''))) : 'No state yet.');
       case '/web': openUrl(`http://localhost:${port}`); return say(`Opening http://localhost:${port}`);

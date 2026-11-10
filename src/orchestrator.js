@@ -1,6 +1,7 @@
 import * as gitModule from './git.js';
 import { ROLES } from './roles.js';
 import { runAgent } from './runner.js';
+import { activeProvider, loadProviders } from './providers.js';
 import { addTask, saveState, log } from './store.js';
 
 const WORKERS = Object.values(ROLES).filter((r) => r.kind === 'worker').map((r) => r.id);
@@ -11,8 +12,10 @@ const LIMIT_WAIT = 15 * 60_000;
 const fmtTask = (t) => `Task T${t.id}: ${t.title}\n${t.description}`;
 const list = (items) => (items.length ? items.map((s) => `- ${s}`).join('\n') : '(none)');
 
-export function createOrchestrator(state, { run = runAgent, onChange = () => {}, now = Date.now, git = gitModule } = {}) {
+export function createOrchestrator(state, { run = runAgent, onChange = () => {}, now = Date.now, git = gitModule, providers = loadProviders(state.folder) } = {}) {
   state.leadIdle ??= false;
+  state.provider ??= 'claude';
+  state.proposals ??= [];
   const running = new Map();
 
   const emit = (agent, text) => { log(state, agent, text); saveState(state); onChange(); };
@@ -25,6 +28,8 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       addTask(state, { title, description, role, createdBy });
     }
   };
+  // only the Lead creates tasks; follow-ups from the others wait in its next prompt
+  const propose = (tasks = [], by) => { for (const t of tasks) state.proposals.push({ ...t, by }); };
 
   const idle = (role) => { state.agents[role] = { status: 'idle', taskId: null }; };
   const settle = (task, blocked, otherwise) => {
@@ -49,7 +54,8 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
     const entry = { taskId: task?.id ?? null };
     try {
       const { prompt, cwd } = prepare();
-      const h = run({ role: ROLES[role], prompt, cwd, onActivity: (a) => emit(name(role), a) });
+      // tool-use lines are feed-only: push them, skip the disk write (the next real event saves)
+      const h = run({ role: ROLES[role], prompt, cwd, provider: activeProvider(state, providers), onActivity: (a) => { log(state, name(role), a); onChange(); } });
       entry.kill = h.kill;
       running.set(role, entry);
       state.agents[role] = { status: 'working', taskId: entry.taskId };
@@ -62,8 +68,10 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
           if (res.limit) {
             if (task) { task.status = role === 'reviewer' ? 'review' : 'backlog'; task.reviewing = false; }
             state.status = 'limited';
-            state.resumeAt = now() + LIMIT_WAIT;
-            emit(name(role), 'hit the usage limit; pausing for 15 min');
+            state.resumeAt = res.resumeAt ?? now() + LIMIT_WAIT;
+            emit(name(role), res.resumeAt
+              ? `hit the usage limit; pausing until ${new Date(res.resumeAt).toLocaleTimeString()}`
+              : 'hit the usage limit; pausing for 15 min');
           } else onResult(res);
         } catch (e) {
           onFail(`orchestrator error: ${e.message}`);
@@ -96,7 +104,7 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       if (!res.ok) return failTask('reviewer', task, res.error, 'review');
       task.reviewing = false;
       const { approved, notes, newTasks } = res.output;
-      addNew(newTasks, 'reviewer');
+      propose(newTasks, 'reviewer');
       if (!approved) return reject(notes, `rejected T${task.id}`);
       const m = git.mergeTask(state.folder, task.id, task.title);
       if (m.ok) {
@@ -128,7 +136,7 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       return { cwd, prompt };
     }, (res) => {
       if (!res.ok) return failTask(role, task, res.error, 'backlog');
-      addNew(res.output.newTasks, role);
+      propose(res.output.newTasks, role);
       if (res.output.status !== 'done') return failTask(role, task, res.output.summary, 'backlog');
       git.commitAll(cwd, `T${task.id}: ${task.title}`);
       if (git.commitsAhead(cwd) === 0) {
@@ -147,8 +155,11 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
   function startLead() {
     const backlog = state.tasks.filter((t) => t.status === 'backlog');
     const researchOpen = state.tasks.some((t) => t.role === 'researcher' && OPEN.includes(t.status));
-    if (!free('lead') || state.leadIdle || backlog.length >= 3 || researchOpen) return;
     const unread = state.messages.filter((m) => !m.read);
+    // an owner message wakes the Lead right away, past the backlog and agent limits
+    if (running.has('lead')) return;
+    if (!unread.length && (!free('lead') || state.leadIdle || backlog.length >= 3 || researchOpen)) return;
+    const proposals = state.proposals.slice();
     const of = (...st) => state.tasks.filter((t) => st.includes(t.status));
     start('lead', null, 'planning', () => ({
       cwd: git.mainWorktreePath(state.folder),
@@ -157,6 +168,7 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
         `New messages from the product owner:\n${list(unread.map((m) => m.text))}`,
         `Done tasks:\n${list(of('done').map((t) => t.title))}`,
         `Open tasks (backlog, in progress, in review; do not plan these again):\n${list(of(...OPEN).map((t) => `T${t.id} [${t.role}] ${t.title}`))}`,
+        `Follow-ups proposed by the team (add only the ones that matter and are not covered yet):\n${list(proposals.map((p) => `[${p.role}] ${p.title}: ${p.description} (from ${p.by})`))}`,
         `Blocked tasks (drop or replace them via dropTaskIds/newTasks):\n${list(of('blocked').map((t) => `T${t.id} [${t.role}] ${t.title} (notes: ${t.notes.join(' | ')})`))}`,
         'Plan QA tasks only for features that are already done.',
         'Plan the next tasks. Use dropTaskIds to remove backlog or blocked tasks that are obsolete.',
@@ -165,6 +177,7 @@ export function createOrchestrator(state, { run = runAgent, onChange = () => {},
       if (!res.ok) return failLead(res.error);
       const { summary, newTasks, dropTaskIds = [] } = res.output;
       for (const m of unread) m.read = true;
+      state.proposals.splice(0, proposals.length);
       const drop = state.tasks.filter((t) => ['backlog', 'blocked'].includes(t.status) && dropTaskIds.includes(t.id));
       for (const t of drop) try { git.removeTaskWorktree(state.folder, t.id, { keepBranchAs: `task-${t.id}` }); } catch {}
       state.tasks = state.tasks.filter((t) => !drop.includes(t));

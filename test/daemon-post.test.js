@@ -24,8 +24,20 @@ test('POST endpoint validation and acceptance', async () => {
   const s = createState(folder, { goal: 'g', existingCode: false });
   s.status = 'paused';
   saveState(s);
+  delete process.env.AGENTHERD_TEST_UNSET_12345;
+  fs.writeFileSync(path.join(folder, '.agentherd', 'providers.json'), JSON.stringify({
+    profiles: {
+      custom: { label: 'Custom endpoint', env: { ANTHROPIC_BASE_URL: 'https://custom.test' } },
+      needsEnv: { label: 'Needs env', env: { ANTHROPIC_AUTH_TOKEN: '${AGENTHERD_TEST_UNSET_12345}' } },
+    },
+  }));
   const { port } = await ensureDaemon(folder);
   const state = () => api(port, 'GET', '/api/state');
+  const initial = await state();
+  assert.equal(initial.provider, 'claude');
+  assert.ok(initial.providers.some((p) => p.name === 'custom' && p.label === 'Custom endpoint'));
+  assert.ok(initial.providers.some((p) => p.name === 'claude'));
+  assert.doesNotMatch(JSON.stringify(initial), /custom\.test|AGENTHERD_TEST_UNSET_12345/);
 
   // wrong / missing content type
   assert.equal((await post(port, '/api/message', '{"text":"hi"}', {})).status, 415);
@@ -43,13 +55,15 @@ test('POST endpoint validation and acceptance', async () => {
     assert.equal((await post(port, '/api/message', b)).status, 400, JSON.stringify(b));
   }
   // missing / invalid fields: control
-  for (const b of [{}, { action: 'explode' }, { action: 5 }, { maxAgents: 0 }, { maxAgents: 7 }, { maxAgents: 2.5 }, { maxAgents: '3' }, { maxAgents: null }]) {
+  for (const b of [{}, { action: 'explode' }, { action: 5 }, { maxAgents: 0 }, { maxAgents: 7 }, { maxAgents: 2.5 }, { maxAgents: '3' }, { maxAgents: null },
+    { provider: 5 }, { provider: 'nope' }, { provider: null }, { provider: '' }, { provider: 'needsEnv' }]) {
     assert.equal((await post(port, '/api/control', b)).status, 400, JSON.stringify(b));
   }
   // rejected requests changed nothing
   let st = await state();
   assert.equal(st.messages.length, 0);
   assert.equal(st.status, 'paused');
+  assert.equal(st.provider, 'claude');
 
   // valid requests
   const ok = await post(port, '/api/message', { text: '  hello  ' });
@@ -60,6 +74,12 @@ test('POST endpoint validation and acceptance', async () => {
     assert.equal((await post(port, '/api/control', { maxAgents: m })).status, 200);
     assert.equal((await state()).maxAgents, m);
   }
+  assert.equal((await post(port, '/api/control', { provider: 'custom' })).status, 200);
+  st = await state();
+  assert.equal(st.provider, 'custom');
+  assert.equal(st.providerLabel, 'Custom endpoint');
+  assert.equal((await post(port, '/api/control', { provider: 'claude' })).status, 200);
+  assert.equal((await state()).provider, 'claude');
   assert.equal((await post(port, '/api/control', { action: 'resume', maxAgents: 2 })).status, 200);
   st = await state();
   assert.equal(st.status, 'running');

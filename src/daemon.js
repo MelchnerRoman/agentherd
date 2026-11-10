@@ -4,6 +4,7 @@ import path from 'node:path';
 import { loadState, saveState, counts, log } from './store.js';
 import { prepareRepo } from './git.js';
 import { createOrchestrator } from './orchestrator.js';
+import { defaultProviders, loadProviders, providerEnv, providerList } from './providers.js';
 
 const folder = path.resolve(process.argv[2] ?? '');
 const state = loadState(folder);
@@ -16,8 +17,25 @@ prepareRepo(folder);
 
 const daemonFile = path.join(folder, '.agentherd', 'daemon.json');
 const clients = new Set();
+let providers;
+try { providers = loadProviders(folder); } catch (e) {
+  providers = defaultProviders();
+  log(state, 'agentHerd', `provider config ignored: ${e.message}`);
+  saveState(state);
+}
+state.provider ??= 'claude';
+if (!Object.hasOwn(providers, state.provider)) {
+  log(state, 'agentHerd', `provider "${state.provider}" is not configured; using claude`);
+  state.provider = 'claude';
+}
+try { providerEnv(providers[state.provider]); } catch (e) {
+  log(state, 'agentHerd', `provider "${state.provider}" is not usable (${e.message}); using claude`);
+  state.provider = 'claude';
+}
 let timer = null;
-const payload = () => JSON.stringify({ ...state, counts: counts(state) });
+const payload = () => JSON.stringify({
+  ...state, counts: counts(state), providers: providerList(providers), providerLabel: providers[state.provider]?.label,
+});
 const push = () => { // throttle SSE to 4/s, trailing edge
   if (timer) return;
   timer = setTimeout(() => {
@@ -26,7 +44,7 @@ const push = () => { // throttle SSE to 4/s, trailing edge
     for (const res of clients) res.write(msg);
   }, 250);
 };
-const orch = createOrchestrator(state, { onChange: push });
+const orch = createOrchestrator(state, { onChange: push, providers });
 
 const send = (res, code, obj) => {
   res.writeHead(code, { 'Content-Type': 'application/json' });
@@ -94,14 +112,22 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { ok: true });
         return orch.tick();
       }
-      const { action, maxAgents } = body;
+      const { action, maxAgents, provider } = body;
       if (action !== undefined && !['pause', 'resume', 'stop'].includes(action)) return send(res, 400, { error: 'unknown action' });
       if (maxAgents !== undefined && !(Number.isInteger(maxAgents) && maxAgents >= 1 && maxAgents <= 6)) return send(res, 400, { error: 'maxAgents must be 1..6' });
-      if (action === undefined && maxAgents === undefined) return send(res, 400, { error: 'nothing to do' });
+      if (provider !== undefined && (typeof provider !== 'string' || !Object.hasOwn(providers, provider))) return send(res, 400, { error: 'unknown provider' });
+      if (provider !== undefined) {
+        try { providerEnv(providers[provider]); } catch (e) { return send(res, 400, { error: e.message }); }
+      }
+      if (action === undefined && maxAgents === undefined && provider === undefined) return send(res, 400, { error: 'nothing to do' });
       if (maxAgents !== undefined) state.maxAgents = maxAgents;
       if (action === 'pause') state.status = 'paused';
       if (action === 'resume') state.status = 'running';
       if (action === 'stop') state.status = 'stopped';
+      if (provider !== undefined) {
+        state.provider = provider;
+        log(state, 'agentHerd', `provider switched to ${providers[provider].label || provider}`);
+      }
       saveState(state);
       push();
       if (action === 'stop') { res.on('finish', shutdown); return send(res, 200, { ok: true }); }
